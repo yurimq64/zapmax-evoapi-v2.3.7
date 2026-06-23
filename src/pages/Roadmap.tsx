@@ -75,13 +75,8 @@ export default function Roadmap() {
     setVotingId(null);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-3rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  // Silent loading
+  // if (loading) { ... }
 
   const visibleItems = items.filter((i) => i.visible);
   const grouped: Record<string, typeof visibleItems> = {};

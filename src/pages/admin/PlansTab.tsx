@@ -22,12 +22,12 @@ export default function PlansTab() {
   const { t } = useLanguage();
   const p = t.admin.plans;
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const fetchPlans = async () => {
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "plans-list" },
     });
@@ -95,7 +95,8 @@ export default function PlansTab() {
     { key: "checkout_url", label: p.checkoutUrl, type: "url" },
   ] as { key: keyof Plan; label: string; type: string }[];
 
-  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  // Silent loading
+  // if (loading) return ...;
 
   return (
     <div className="space-y-4 sm:space-y-6">

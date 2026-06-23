@@ -15,23 +15,30 @@ interface AdminMetrics {
 export default function MetricsTab() {
   const { t } = useLanguage();
   const m = t.admin.metrics;
-  const [data, setData] = useState<AdminMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<AdminMetrics | null>(() => {
+    const cached = localStorage.getItem("zapmax_admin_metrics");
+    return cached ? JSON.parse(cached) : null;
+  });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
-      setLoading(true);
+      // setLoading(true);
       try {
         const { data: res, error } = await supabase.functions.invoke("admin-data?action=metrics");
         if (error) throw error;
-        if (res?.success) setData(res.data);
+        if (res?.success) {
+          setData(res.data);
+          localStorage.setItem("zapmax_admin_metrics", JSON.stringify(res.data));
+        }
       } catch { console.error("Error fetching admin metrics"); }
       setLoading(false);
     };
     fetch();
   }, []);
 
-  if (loading || !data) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  // Silent loading
+  if (!data) return null;
 
   const formatCurrency = (cents: number) => `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`;
   const uptimePercent = data.totalInstances > 0 ? ((data.connectedInstances / data.totalInstances) * 100).toFixed(1) : "0";
@@ -51,7 +58,7 @@ export default function MetricsTab() {
     <div className="space-y-4 sm:space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {metrics.map((met, i) => (
-          <motion.div key={met.label} variants={fadeUp} custom={i} initial="hidden" animate="visible">
+          <div key={met.label}>
             <Card>
               <CardContent className="p-4 sm:pt-6">
                 <div className="flex items-center justify-between gap-2">
@@ -63,7 +70,7 @@ export default function MetricsTab() {
                 <p className="text-[11px] sm:text-xs text-muted-foreground">{met.label}</p>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         ))}
       </div>
 

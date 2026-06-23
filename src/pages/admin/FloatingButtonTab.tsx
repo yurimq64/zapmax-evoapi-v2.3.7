@@ -38,8 +38,11 @@ const callAdmin = async (action: string, payload: Record<string, unknown> = {}) 
 export default function FloatingButtonTab() {
   const { t } = useLanguage();
   const f = t.admin.floatingBtn;
-  const [settings, setSettings] = useState<ButtonSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<ButtonSettings | null>(() => {
+    const cached = localStorage.getItem("zapmax_admin_floating_btn");
+    return cached ? JSON.parse(cached) : null;
+  });
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const positionOptions = [
@@ -52,10 +55,12 @@ export default function FloatingButtonTab() {
   useEffect(() => { loadSettings(); }, []);
 
   const loadSettings = async () => {
-    setLoading(true);
+    // setLoading(true);
     try {
       const json = await callAdmin("floating-btn-get");
-      setSettings(json.data ? json.data : { id: "", ...defaults });
+      const s = json.data ? json.data : { id: "", ...defaults };
+      setSettings(s);
+      localStorage.setItem("zapmax_admin_floating_btn", JSON.stringify(s));
     } catch { setSettings({ id: "", ...defaults }); }
     setLoading(false);
   };
@@ -73,14 +78,17 @@ export default function FloatingButtonTab() {
         show_text: settings.show_text, active: settings.active,
       });
       if (json.success) {
-        if (json.data) setSettings(json.data);
+        const s = json.data || settings;
+        setSettings(s);
+        localStorage.setItem("zapmax_admin_floating_btn", JSON.stringify(s));
         toast.success(f.savedOk);
       } else toast.error(f.saveError);
     } catch { toast.error(f.saveError); }
     setSaving(false);
   };
 
-  if (loading) return <div className="space-y-4"><Card><CardContent className="p-6 space-y-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</CardContent></Card></div>;
+  // Silent loading
+  // if (loading) return ...;
   if (!settings) return null;
 
   const SelectedIcon = iconComponents[settings.icon] || MessageCircle;

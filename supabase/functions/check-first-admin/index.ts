@@ -60,6 +60,18 @@ Deno.serve(async (req) => {
         .eq("role", "admin")
         .maybeSingle();
 
+      // NEW: Also check if this admin has a tenant. If not, create one.
+      const { data: membership } = await adminClient
+        .from("tenant_members")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!!currentRole && !membership) {
+        console.log("Admin found without tenant, creating default...");
+        await createDefaultTenant(adminClient, userId, authUser.email || "Admin");
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -85,21 +97,67 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Create tenant for this new first admin
+    await createDefaultTenant(adminClient, userId, authUser.email || "Admin");
+
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           is_first_user: true,
           is_admin: true,
-          message: "First user promoted to system admin",
+          message: "First user promoted to system admin and tenant created",
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    console.error("check-first-admin crash:", err);
     return new Response(
       JSON.stringify({ success: false, error: "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
+
+async function createDefaultTenant(adminClient: any, userId: string, email: string) {
+  const companyName = email.split("@")[0] || "Minha Empresa";
+  const slug = `${companyName.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${Math.random().toString(36).substring(2, 7)}`;
+
+  const { data: tenant } = await adminClient
+    .from("tenants")
+    .insert({ name: companyName, slug })
+    .select()
+    .single();
+
+  if (tenant) {
+    await adminClient.from("tenant_members").insert({
+      tenant_id: tenant.id,
+      user_id: userId,
+      role: "admin"
+    });
+
+    await adminClient.from("profiles").update({
+      tenant_id: tenant.id,
+      company: companyName
+    }).eq("user_id", userId);
+
+    // Get first active plan
+    const { data: plan } = await adminClient
+      .from("plans")
+      .select("id")
+      .eq("active", true)
+      .order("price_cents", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (plan) {
+      await adminClient.from("subscriptions").insert({
+        tenant_id: tenant.id,
+        plan_id: plan.id,
+        status: "trial",
+        trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      });
+    }
+  }
+}

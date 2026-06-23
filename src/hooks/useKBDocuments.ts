@@ -18,12 +18,12 @@ export interface KBDocument {
 export function useKBDocuments() {
   const { user } = useAuth();
   const [documents, setDocuments] = useState<KBDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
 
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "kb-list" },

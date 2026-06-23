@@ -16,12 +16,6 @@ async function generateAIResponse(
   incomingMediaType: string | null,
 ) {
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY not configured, skipping auto-response");
-      return;
-    }
-
     // Check if AI is enabled
     const { data: aiSettings } = await supabaseAdmin
       .from("ai_settings")
@@ -34,12 +28,63 @@ async function generateAIResponse(
       return;
     }
 
+    const openaiApiKey = aiSettings.openai_api_key;
+    const openaiModel = aiSettings.openai_model || "gpt-4o-mini";
+
+    if (!openaiApiKey) {
+      console.error("OpenAI API Key not configured for tenant", tenantId, "skipping auto-response");
+      return;
+    }
+
+    // Get current conversation status
+    const { data: conversation } = await supabaseAdmin
+      .from("conversations")
+      .select("status")
+      .eq("id", conversationId)
+      .maybeSingle();
+
     // Load instance settings
     const { data: instSettings } = await supabaseAdmin
       .from("instance_settings")
       .select("*")
       .eq("instance_id", instanceId)
       .maybeSingle();
+
+    // --- Pause control (Status-based) ---
+    if (instSettings) {
+      const pauseWords = (instSettings.pause_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+      const resumeWords = (instSettings.resume_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+
+      // Get last inbound message content directly from function call (or db fallback if needed)
+      const { data: lastMsg } = await supabaseAdmin
+        .from("messages")
+        .select("content")
+        .eq("conversation_id", conversationId)
+        .eq("direction", "inbound")
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .single();
+      
+      const lastContent = (lastMsg?.content || "").toLowerCase().trim();
+
+      if (pauseWords.includes(lastContent)) {
+        console.log(`Bot PAUSE command detected. Setting conversation ${conversationId} to pending.`);
+        await supabaseAdmin.from("conversations").update({ status: "pending" }).eq("id", conversationId);
+        return;
+      }
+
+      if (resumeWords.includes(lastContent)) {
+        console.log(`Bot RESUME command detected. Setting conversation ${conversationId} to open.`);
+        await supabaseAdmin.from("conversations").update({ status: "open" }).eq("id", conversationId);
+        // Continue to generate response if needed, or return after re-enabling
+      }
+    }
+
+    // If conversation is pending, it means it's paused for the bot
+    if (conversation?.status === "pending") {
+      console.log(`Bot is paused for conversation ${conversationId} (status is pending). Skipping.`);
+      return;
+    }
 
     // --- Debounce: wait and check for newer messages ---
     if (instSettings?.debounce_enabled && instSettings.debounce_seconds > 0) {
@@ -74,32 +119,6 @@ async function generateAIResponse(
         console.log("Debounce: newer message arrived, skipping this AI call");
         return;
       }
-    }
-
-    // --- Pause control ---
-    if (instSettings) {
-      const pauseWords = (instSettings.pause_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
-      const resumeWords = (instSettings.resume_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
-
-      // Check last inbound message content
-      const { data: lastMsg } = await supabaseAdmin
-        .from("messages")
-        .select("content")
-        .eq("conversation_id", conversationId)
-        .eq("direction", "inbound")
-        .order("sent_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      const lastContent = (lastMsg?.content || "").toLowerCase().trim();
-
-      // Check if bot is paused for this conversation (simple: check if last outbound AI msg before this was a pause ack)
-      // For simplicity, use pause/resume words on the current message
-      if (pauseWords.some(w => lastContent === w)) {
-        console.log("Bot paused by user for conversation", conversationId);
-        return;
-      }
-      // Resume words just let it continue normally
     }
 
     // --- Fallback for media ---
@@ -246,7 +265,16 @@ async function generateAIResponse(
     systemPrompt += `- Use o ID do contato atual: ${contactPhone} (busque pelo telefone).\n`;
     systemPrompt += `- A data de hoje é: ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} (${new Date().toISOString().split("T")[0]}).\n\n`;
 
-    systemPrompt += "\n## Regras Finais\n- Responda APENAS com base nas informações fornecidas.\n- Se não souber a resposta, diga que vai verificar e retornar.\n- Mantenha respostas curtas e objetivas para WhatsApp.\n- Responda sempre em português brasileiro.\n- NUNCA use formatação Markdown (asteriscos duplos **, hashtags #, traços -, crases, etc).\n- Para destacar algo no WhatsApp, use apenas UM asterisco de cada lado: *assim*.\n- Escreva texto limpo e direto, sem qualquer marcação especial.";
+    systemPrompt += "\n## Regras Finais\n" +
+      "- Priorize SEMPRE as informações da 'Base de Conhecimento' acima para responder.\n" +
+      "- Se a informação NÃO estiver na base de conhecimento ou nos serviços, informe educadamente que vai verificar com um atendente humano.\n" +
+      "- Responda de forma natural a saudações (olá, bom dia, etc), mas direcione o assunto para o suporte baseado nos documentos ou agendamento.\n" +
+      "- Mantenha respostas curtas e objetivas, ideais para leitura no celular (WhatsApp).\n" +
+      "- Use Português do Brasil.\n" +
+      "- IMPORTANTE: O WhatsApp NÃO suporta formatação Markdown complexa (hashtags #, listas com traço -, blocos de código, etc).\n" +
+      "- Para destacar palavras, use apenas UM asterisco de cada lado: *exemplo*. NUNCA use dois asteriscos **.\n" +
+      "- Não use negrito em frases longas, apenas em palavras-chave.\n" +
+      "- Escreva texto limpo, direto e sem marcações de cabeçalho.";
 
     // Define scheduling tools for function calling
     const tools = [
@@ -359,14 +387,14 @@ async function generateAIResponse(
       ...chatMessages,
     ];
 
-    let aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    let aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: openaiModel,
         messages: aiMessages,
         tools,
         tool_choice: "auto",
@@ -507,14 +535,14 @@ async function generateAIResponse(
       }
 
       // Call AI again with tool results
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${openaiApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: openaiModel,
           messages: aiMessages,
           tools,
           tool_choice: "auto",
@@ -873,11 +901,35 @@ Deno.serve(async (req) => {
         sent_at: new Date().toISOString(),
       });
 
-      // Update conversation
+      // Wait for conversation update data
       const updateData: Record<string, unknown> = {
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
+
+      // --- Admin Pause Control (Triggered by atendente/outbound) ---
+      if (fromMe) {
+        const { data: instSettings } = await supabaseAdmin
+          .from("instance_settings")
+          .select("pause_words, resume_words")
+          .eq("instance_id", instance.id)
+          .maybeSingle();
+
+        if (instSettings) {
+          const pauseWords = (instSettings.pause_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+          const resumeWords = (instSettings.resume_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+          const content = (messageContent || "").toLowerCase().trim();
+
+          if (pauseWords.includes(content)) {
+            console.log(`Bot PAUSED by admin for conversation ${conversation.id}`);
+            updateData.status = "pending";
+          } else if (resumeWords.includes(content)) {
+            console.log(`Bot RESUMED by admin for conversation ${conversation.id}`);
+            updateData.status = "open";
+          }
+        }
+      }
+
       if (!fromMe) {
         const { data: currentConv } = await supabaseAdmin
           .from("conversations")

@@ -17,24 +17,27 @@ interface Schedule {
 
 export function useSchedules() {
   const { user } = useAuth();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [schedules, setSchedules] = useState<Schedule[]>(() => {
+    const cached = localStorage.getItem("zapmax_schedules");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "schedules-list" },
     });
     if (error) {
       console.error("Error fetching schedules:", error);
     } else if (data?.success) {
-      setSchedules(
-        (data.data || []).map((s: any) => ({
-          ...s,
-          contact: s.contact || null,
-        }))
-      );
+      const list = (data.data || []).map((s: any) => ({
+        ...s,
+        contact: s.contact || null,
+      }));
+      setSchedules(list);
+      localStorage.setItem("zapmax_schedules", JSON.stringify(list));
     }
     setLoading(false);
   }, [user]);

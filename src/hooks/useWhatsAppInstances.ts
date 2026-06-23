@@ -14,11 +14,15 @@ export interface WhatsAppInstance {
 }
 
 export function useWhatsAppInstances() {
-  const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [instances, setInstances] = useState<WhatsAppInstance[]>(() => {
+    const cached = localStorage.getItem("zapmax_whatsapp_instances");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(() => !!localStorage.getItem("zapmax_whatsapp_instances"));
 
   const fetchInstances = useCallback(async () => {
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("whatsapp-instances", {
       body: { _action: "list" },
     });
@@ -31,6 +35,7 @@ export function useWhatsAppInstances() {
     if (data?.success) {
       const list: WhatsAppInstance[] = data.data || [];
       setInstances(list);
+      localStorage.setItem("zapmax_whatsapp_instances", JSON.stringify(list));
       
       // Auto-check status for instances pending sync (status/phone)
       for (const inst of list) {
@@ -48,13 +53,18 @@ export function useWhatsAppInstances() {
             const nextPhone = statusData?.data?.phone ?? null;
 
             if (nextStatus !== inst.status || nextPhone !== (inst.phone ?? null)) {
-              setInstances(prev => prev.map(i =>
-                i.id === inst.id ? { ...i, status: nextStatus, phone: nextPhone } : i
-              ));
+              setInstances(prev => {
+                const updated = prev.map(i =>
+                  i.id === inst.id ? { ...i, status: nextStatus, phone: nextPhone } : i
+                );
+                localStorage.setItem("zapmax_whatsapp_instances", JSON.stringify(updated));
+                return updated;
+              });
             }
           }).catch(() => {});
         }
       }
+      setHasFetched(true);
     }
     setLoading(false);
   }, []);
@@ -132,5 +142,5 @@ export function useWhatsAppInstances() {
     fetchInstances();
   }, [fetchInstances]);
 
-  return { instances, loading, fetchInstances, createInstance, connectInstance, disconnectInstance, deleteInstance, checkInstanceStatus, setWebhook };
+  return { instances, loading, hasFetched, fetchInstances, createInstance, connectInstance, disconnectInstance, deleteInstance, checkInstanceStatus, setWebhook };
 }

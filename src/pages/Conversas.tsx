@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, MessageCircle, Send, Bot, Phone, ArrowLeft, Loader2, Bell,
   Filter, XCircle, CheckCircle2, Clock, Sparkles, Copy, Check, Trash2,
-  CalendarDays, RefreshCw, X, ArrowRightLeft,
+  CalendarDays, RefreshCw, X, ArrowRightLeft, Zap,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -121,11 +121,12 @@ type StatusFilter = "all" | "open" | "closed" | "pending";
 // statusFilters built inside component with translations
 
 export default function Conversas() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const { conversations, loading: convLoading, markAsRead, updateStatus, updateKanban, fetchConversations } = useConversations();
-  const { plan, usage, loading: planLimitsLoading, refetch: refetchPlanLimits } = usePlanLimits();
+  const { plan, usage, messageLimitReached, loading: planLimitsLoading, refetch: refetchPlanLimits } = usePlanLimits();
 
   const statusFilters: { value: StatusFilter; label: string; icon: React.ElementType }[] = [
     { value: "all", label: t.conversations.filters.all, icon: MessageCircle },
@@ -141,7 +142,7 @@ export default function Conversas() {
   const { messages, loading: msgLoading } = useMessages(selectedId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevConvCountRef = useRef(0);
-  const messageLimitReached = !!plan && !!usage && plan.max_messages !== null && usage.messages_this_month >= plan.max_messages;
+
 
   // Instance filter from query param
   const instanceFilter = searchParams.get("instance");
@@ -472,10 +473,28 @@ export default function Conversas() {
     closed: conversations.filter((c) => c.status === "closed").length,
   };
 
-  if (convLoading) {
+
+
+  if (!planLimitsLoading && messageLimitReached) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-3rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 bg-background/95 backdrop-blur-sm">
+        <div className="h-20 w-20 rounded-full bg-destructive/10 flex items-center justify-center mb-2 animate-pulse">
+          <Zap className="h-10 w-10 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold">Limite de Mensagens Atingido</h2>
+        <p className="text-muted-foreground max-w-sm">
+          Seu plano ({plan?.name}) atingiu o limite mensal de <strong>{plan?.max_messages}</strong> mensagens. 
+          Acesso às conversas bloqueado para garantir a integridade do sistema.
+          Atualize seu plano para continuar atendendo seus clientes.
+        </p>
+        <div className="flex gap-3 pt-2">
+          <Button onClick={() => navigate("/planos")} className="font-bold">
+            Ver Planos e Upgrade
+          </Button>
+          <Button variant="outline" onClick={() => fetchConversations({ background: true })}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Recarregar
+          </Button>
+        </div>
       </div>
     );
   }
@@ -809,11 +828,7 @@ export default function Conversas() {
 
           {/* Messages */}
           <div className="flex-1 overflow-auto p-4 space-y-1">
-            {msgLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              </div>
-            ) : messages.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <MessageCircle className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm">{t.conversations.noMessages}</p>
@@ -823,19 +838,7 @@ export default function Conversas() {
             )}
 
             {/* AI Loading indicator */}
-            {aiLoading && !aiSuggestion && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex justify-end mb-2"
-              >
-                <div className="rounded-2xl px-4 py-3 bg-primary/10 border border-primary/20 flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
-                  <span className="text-xs text-primary">{t.conversations.generatingResponse}</span>
-                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                </div>
-              </motion.div>
-            )}
+
 
             <div ref={messagesEndRef} />
           </div>

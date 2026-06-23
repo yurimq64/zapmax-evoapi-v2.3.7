@@ -39,17 +39,23 @@ function getStartDate(period: PeriodFilter): string | null {
 export function useDashboardMetrics() {
   const { user } = useAuth();
   const [period, setPeriod] = useState<PeriodFilter>("all");
-  const [metrics, setMetrics] = useState<DashboardMetrics>({
-    totalConversations: 0, totalMessages: 0, activeInstances: 0,
-    totalContacts: 0, pendingSchedules: 0, inboundMessages: 0,
-    outboundMessages: 0, aiMessages: 0, manualMessages: 0,
+  const [metrics, setMetrics] = useState<DashboardMetrics>(() => {
+    const cached = localStorage.getItem("zapmax_dashboard_metrics");
+    return cached ? JSON.parse(cached) : {
+      totalConversations: 0, totalMessages: 0, activeInstances: 0,
+      totalContacts: 0, pendingSchedules: 0, inboundMessages: 0,
+      outboundMessages: 0, aiMessages: 0, manualMessages: 0,
+    };
   });
-  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>(() => {
+    const cached = localStorage.getItem("zapmax_dashboard_chart");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
 
   const fetchMetrics = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
 
     const startDate = getStartDate(period);
     const chartDays = period === "today" ? 1 : period === "7d" ? 7 : period === "30d" ? 30 : 14;
@@ -65,6 +71,8 @@ export function useDashboardMetrics() {
     if (!error && data?.success) {
       setMetrics(data.data.metrics);
       setChartData(data.data.chartData || []);
+      localStorage.setItem("zapmax_dashboard_metrics", JSON.stringify(data.data.metrics));
+      localStorage.setItem("zapmax_dashboard_chart", JSON.stringify(data.data.chartData || []));
     }
 
     setLoading(false);

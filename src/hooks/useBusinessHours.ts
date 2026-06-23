@@ -21,12 +21,12 @@ export interface BusinessHour {
 export function useBusinessHours() {
   const { user } = useAuth();
   const [hours, setHours] = useState<BusinessHour[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
   const fetchHours = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "business-hours-list" },
     });

@@ -15,16 +15,22 @@ interface EvolutionStatus {
 export default function EvolutionApiTab() {
   const { t } = useLanguage();
   const e = t.admin.evolution;
-  const [status, setStatus] = useState<EvolutionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<EvolutionStatus | null>(() => {
+    const cached = localStorage.getItem("zapmax_admin_evolution_status");
+    return cached ? JSON.parse(cached) : null;
+  });
+  const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
 
   const fetchStatus = async () => {
-    setLoading(true);
+    // setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-data", { method: "POST", body: { _action: "evolution-status" } });
       if (error) { console.error("Evolution status error:", error); toast.error(e.statusCheckError); }
-      else if (data?.success) setStatus(data.data);
+      else if (data?.success) {
+        setStatus(data.data);
+        localStorage.setItem("zapmax_admin_evolution_status", JSON.stringify(data.data));
+      }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -38,7 +44,8 @@ export default function EvolutionApiTab() {
 
   useEffect(() => { fetchStatus(); }, []);
 
-  if (loading && !status) return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  // Silent loading
+  // if (loading && !status) return ...;
 
   return (
     <div className="space-y-3 sm:space-y-4">

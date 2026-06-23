@@ -1,6 +1,7 @@
 # Configuração do Supabase (Parte 1) – Guia em Texto
 
-Neste guia você aprenderá como configurar o **Supabase** para utilizar o sistema **ZapMax**. O processo envolve baixar o código fonte, configurar o ambiente local, criar um projeto no Supabase e realizar o deploy das migrations e Edge Functions.
+Neste guia você aprenderá como configurar o **Supabase** para utilizar o sistema **ZapMax**. 
+O processo envolve baixar o código fonte, configurar o ambiente local, criar um projeto no Supabase e realizar o deploy das migrations e Edge Functions.
 
 ---
 

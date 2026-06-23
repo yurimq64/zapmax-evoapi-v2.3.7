@@ -29,9 +29,15 @@ export interface KanbanConversation {
 
 export function useKanban() {
   const { user } = useAuth();
-  const [columns, setColumns] = useState<KanbanColumn[]>([]);
-  const [conversations, setConversations] = useState<KanbanConversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [columns, setColumns] = useState<KanbanColumn[]>(() => {
+    const cached = localStorage.getItem("zapmax_kanban_columns");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [conversations, setConversations] = useState<KanbanConversation[]>(() => {
+    const cached = localStorage.getItem("zapmax_kanban_conversations");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
   const fetchColumns = useCallback(async () => {
@@ -40,6 +46,7 @@ export function useKanban() {
     });
     if (!error && data?.success) {
       setColumns(data.data || []);
+      localStorage.setItem("zapmax_kanban_columns", JSON.stringify(data.data || []));
       if (data.tenant_id) setTenantId(data.tenant_id);
     }
   }, []);
@@ -49,18 +56,18 @@ export function useKanban() {
       body: { _action: "conversations-list" },
     });
     if (!error && data?.success) {
-      setConversations(
-        (data.data || []).map((c: any) => ({
-          ...c,
-          contact: c.contact || { id: c.contact_id, name: "Desconhecido", phone: "", avatar_url: null, tags: null },
-        }))
-      );
+      const list = (data.data || []).map((c: any) => ({
+        ...c,
+        contact: c.contact || { id: c.contact_id, name: "Desconhecido", phone: "", avatar_url: null, tags: null },
+      }));
+      setConversations(list);
+      localStorage.setItem("zapmax_kanban_conversations", JSON.stringify(list));
     }
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     Promise.all([fetchColumns(), fetchConversations()]).finally(() => setLoading(false));
   }, [user, fetchColumns, fetchConversations]);
 

@@ -65,8 +65,11 @@ export default function UsersTab() {
   const { t } = useLanguage();
   const u = t.admin.users;
   const statusBadge = useStatusBadge();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<AdminUser[]>(() => {
+    const cached = localStorage.getItem("zapmax_admin_users");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -93,15 +96,23 @@ export default function UsersTab() {
   };
 
   const fetchUsers = async () => {
-    setLoading(true);
+    // setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-data?action=users");
-      if (error) throw error;
+      if (error) {
+        console.error("Function invoke error:", error);
+        throw error;
+      }
       if (data?.success) {
-        setUsers(data.data.map((usr: any) => ({
+        const udata = data.data.map((usr: any) => ({
           ...usr,
           lastActive: formatLastActive(usr.lastActive),
-        })));
+        }));
+        setUsers(udata);
+        localStorage.setItem("zapmax_admin_users", JSON.stringify(udata));
+      } else {
+        console.error("Admin data error response:", data?.error);
+        throw new Error(data?.error || "Unknown error");
       }
     } catch (e) {
       console.error("Error fetching users:", e);
@@ -270,13 +281,8 @@ export default function UsersTab() {
     </DropdownMenu>
   );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  // Silent loading
+  // if (loading) { ... }
 
   return (
     <div className="space-y-3 sm:space-y-4">

@@ -64,19 +64,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const isAdmin = !!adminRole;
 
-    // 2. Get tenant
-    const { data: membership } = await adminClient
-      .from("tenant_members")
-      .select("tenant_id")
-      .eq("user_id", userId)
-      .single();
-
-    if (!membership) {
-      return json({ success: false, error: "No tenant found" }, 403);
-    }
-    const tenantId = membership.tenant_id;
-
-    // If admin, return full access without plan checks
+    // If admin, return full access immediately
     if (isAdmin) {
       return json({
         success: true,
@@ -91,6 +79,18 @@ Deno.serve(async (req) => {
         },
       });
     }
+
+    // 2. Get tenant
+    const { data: membership } = await adminClient
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("user_id", userId)
+      .single();
+
+    if (!membership) {
+      return json({ success: false, error: "No tenant found" }, 403);
+    }
+    const tenantId = membership.tenant_id;
 
     // 3. Get latest subscription + plan
     const { data: sub } = await adminClient

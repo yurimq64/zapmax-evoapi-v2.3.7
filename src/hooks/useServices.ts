@@ -18,11 +18,11 @@ export interface Service {
 export function useServices() {
   const { user } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchServices = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "services-list" },
     });

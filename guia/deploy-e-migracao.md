@@ -30,13 +30,13 @@ Isso abrirá o navegador para autenticação. Após login, o token será salvo l
 ### 3. Vincular ao projeto de destino
 
 ```bash
-npx supabase link --project-ref SEU_PROJECT_REF
+npx supabase link --project-ref SEU_PROJECT_ID
 ```
 
 ### 4. Fazer deploy das funções
 
 ```bash
-npx supabase functions deploy --project-ref SEU_PROJECT_REF
+npx supabase functions deploy --project-ref htcpqhbkdclmsojywoxb
 npx supabase functions deploy --no-verify-jwt
 
 ```
@@ -44,7 +44,6 @@ npx supabase functions deploy --no-verify-jwt
 ### 5. Fazer deploy de todas as migrações
 
 ```bash
-dir supabase\migrations | sort LastWriteTime -Descending | select -First 28 Name
 npx supabase db push --include-all
 ```
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import pdf from "npm:pdf-parse@1.1.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,8 +20,6 @@ serve(async (req) => {
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     // Verify user
     const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -67,6 +66,20 @@ serve(async (req) => {
       });
     }
 
+    // Get user OpenAI settings
+    const { data: aiSettings, error: aiSettingsError } = await adminClient
+      .from("ai_settings")
+      .select("openai_api_key, openai_model")
+      .eq("tenant_id", doc.tenant_id)
+      .single();
+
+    if (aiSettingsError || !aiSettings?.openai_api_key) {
+      console.error("AI Settings error or missing API Key:", aiSettingsError);
+      return new Response(JSON.stringify({ success: false, error: "OpenAI API Key não configurada nas configurações de IA" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Update status to processing
     await adminClient.from("kb_documents").update({ processing_status: "processing" }).eq("id", document_id);
 
@@ -92,8 +105,33 @@ serve(async (req) => {
     if (isTextFile) {
       // Text files: read content directly, no AI needed
       extractedContent = await fileData.text();
-    } else {
-      // Binary files (PDF, images): use AI extraction
+    } else if (ext === "pdf") {
+      // Extract PDF text locally and natively
+      console.log(`Extracting text from PDF locally: ${doc.file_name}`);
+      const arrayBuffer = await fileData.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      try {
+        console.log("Parsing PDF with pdf-parse...");
+        const data = await pdf(bytes);
+        
+        // Basic normalization: remove multiple spaces, weird characters
+        let text = data.text || "";
+        text = text.replace(/\s+/g, " ").trim();
+        
+        extractedContent = text;
+        console.log(`PDF text extracted successfully. Length: ${extractedContent.length}`);
+        if (extractedContent.length > 0) {
+          console.log(`Snippet: ${extractedContent.substring(0, 100)}...`);
+        } else {
+          console.warn("PDF extraction returned empty text. PDF might be image-only.");
+        }
+      } catch (pdfError) {
+        console.error("Error parsing PDF locally:", pdfError);
+        const errorMessage = pdfError instanceof Error ? pdfError.message : String(pdfError);
+        throw new Error(`Falha na extração local do PDF: ${errorMessage}`);
+      }
+    } else if (["png", "jpg", "jpeg"].includes(ext)) {
+      // Binary files (images): use AI extraction
       const arrayBuffer = await fileData.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
       let binary = "";
@@ -103,22 +141,21 @@ serve(async (req) => {
       const base64 = btoa(binary);
 
       const mimeMap: Record<string, string> = {
-        pdf: "application/pdf",
         png: "image/png",
         jpg: "image/jpeg",
         jpeg: "image/jpeg",
       };
-      const mimeType = mimeMap[ext] || "application/octet-stream";
+      const mimeType = mimeMap[ext] || "image/jpeg";
 
-      // Call AI to extract text
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Call OpenAI to extract text
+      const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${aiSettings.openai_api_key}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: aiSettings.openai_model || "gpt-4o-mini",
           messages: [
             {
               role: "system",
@@ -143,27 +180,34 @@ serve(async (req) => {
 
       if (!aiResponse.ok) {
         const errText = await aiResponse.text();
-        console.error("AI extraction error:", aiResponse.status, errText);
+        let errorData;
+        try {
+          errorData = JSON.parse(errText);
+        } catch {
+          errorData = errText;
+        }
+
+        console.error("AI extraction error:", aiResponse.status, errorData);
         await adminClient.from("kb_documents").update({ processing_status: "error" }).eq("id", document_id);
 
-        if (aiResponse.status === 429) {
-          return new Response(JSON.stringify({ success: false, error: "Rate limit exceeded, try again later" }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (aiResponse.status === 402) {
-          return new Response(JSON.stringify({ success: false, error: "AI credits exhausted" }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(JSON.stringify({ success: false, error: "AI extraction failed" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: "OpenAI API Error", 
+          details: errorData 
+        }), {
+          status: aiResponse.status, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
         });
       }
 
       const aiData = await aiResponse.json();
       extractedContent = aiData.choices?.[0]?.message?.content || "";
+    } else {
+      // Fallback or unhandled extension
+      await adminClient.from("kb_documents").update({ processing_status: "error" }).eq("id", document_id);
+      return new Response(JSON.stringify({ success: false, error: `Tipo de arquivo não suportado para extração automática: .${ext}` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Save extracted content
@@ -177,7 +221,11 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("process-document error:", e);
-    return new Response(JSON.stringify({ success: false, error: e instanceof Error ? e.message : "Internal error" }), {
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: e instanceof Error ? e.message : "Internal error",
+      details: e
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

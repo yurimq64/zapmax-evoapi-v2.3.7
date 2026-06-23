@@ -1,3 +1,17 @@
+/* Disable all transitions and animations for instant feel */
+* {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
+/* Stop spinners from spinning and just hide them or make them static */
+.animate-spin {
+  animation: none !important;
+  display: none !important;
+}
+
 #lovable-badge {
   display: none !important;
 }
@@ -105,7 +119,11 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family:
+      "Inter",
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 }
 
@@ -125,10 +143,15 @@
 }
 
 /* Sidebar collapse - hide text labels in icon mode */
-[data-collapsible="icon"] [data-sidebar="sidebar"] [data-sidebar="menu-button"] > span {
+[data-collapsible="icon"]
+  [data-sidebar="sidebar"]
+  [data-sidebar="menu-button"]
+  > span {
   @apply hidden;
 }
 
-[data-collapsible="icon"] [data-sidebar="sidebar"] [data-sidebar="group-label"] {
+[data-collapsible="icon"]
+  [data-sidebar="sidebar"]
+  [data-sidebar="group-label"] {
   @apply hidden;
 }

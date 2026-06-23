@@ -482,6 +482,11 @@ export default function Configuracoes() {
                         </>
                       )}
                     </div>
+                    <div className="rounded-lg bg-primary/5 border border-primary/20 p-2.5 sm:p-3">
+                      <p className="text-[10px] sm:text-xs text-primary leading-relaxed">
+                        {t.settings.knowledgeBase.markdownHint}
+                      </p>
+                    </div>
                     <div className="space-y-1">
                       <Label className="text-xs sm:text-sm">{t.settings.knowledgeBase.docTitle}</Label>
                       <Input placeholder="" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className="text-sm" />
@@ -528,12 +533,7 @@ export default function Configuracoes() {
                 <h2 className="text-base sm:text-xl font-bold">{t.settings.profile.profileTitle}</h2>
                 <p className="text-xs sm:text-sm text-muted-foreground">{t.settings.profile.profileSubtitle}</p>
               </div>
-              {profileLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              ) : (
-                <>
+              <>
                   <div className="flex items-center gap-3 sm:gap-4">
                     <div className="relative shrink-0">
                       <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-full bg-primary flex items-center justify-center text-xl sm:text-3xl font-bold text-primary-foreground">
@@ -567,7 +567,6 @@ export default function Configuracoes() {
                     {t.settings.profile.saveChanges}
                   </Button>
                 </>
-              )}
             </CardContent>
           </Card>
         </TabsContent>

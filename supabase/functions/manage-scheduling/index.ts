@@ -143,8 +143,8 @@ Deno.serve(async (req) => {
       }
 
       // Remove slots that conflict with existing schedules
-      const dayStart = `${date}T00:00:00`;
-      const dayEnd = `${date}T23:59:59`;
+      const dayStart = `${date}T00:00:00-03:00`;
+      const dayEnd = `${date}T23:59:59-03:00`;
 
       const { data: existingSchedules } = await supabase
         .from("schedules")
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
         .in("status", ["pending", "confirmed"]);
 
       const availableSlots = slots.filter(slot => {
-        const slotStart = new Date(`${date}T${slot}:00`).getTime();
+        const slotStart = new Date(`${date}T${slot}:00-03:00`).getTime();
         const slotEnd = slotStart + durationMinutes * 60000;
 
         return !(existingSchedules || []).some(sch => {

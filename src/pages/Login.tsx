@@ -90,7 +90,7 @@ export default function Login() {
     e.preventDefault();
     setForgotLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/#/reset-password`,
     });
     setForgotLoading(false);
     if (error) {

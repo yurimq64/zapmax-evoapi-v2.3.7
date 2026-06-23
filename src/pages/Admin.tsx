@@ -18,17 +18,13 @@ export default function Admin() {
   const { isAdmin, isRoleLoading } = useUserRole();
   const { t } = useLanguage();
 
-  if (isRoleLoading) {
-    return (<div className="flex items-center justify-center min-h-[50vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>);
-  }
-
-  if (!isAdmin) {
+  if (!isRoleLoading && !isAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 w-full">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+      <div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
@@ -42,9 +38,9 @@ export default function Admin() {
             {t.admin.systemOperational}
           </Badge>
         </div>
-      </motion.div>
+      </div>
 
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+      <div>
         <Tabs defaultValue="users" className="space-y-3 sm:space-y-4">
           <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 w-full">
             <TabsList className="w-max sm:w-full justify-start">
@@ -68,7 +64,7 @@ export default function Admin() {
           <TabsContent value="settings"><SystemSettingsTab /></TabsContent>
           <TabsContent value="floating-btn"><FloatingButtonTab /></TabsContent>
         </Tabs>
-      </motion.div>
+      </div>
     </div>
   );
 }

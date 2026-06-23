@@ -12,11 +12,11 @@ export interface BlockedDate {
 export function useBlockedDates() {
   const { user } = useAuth();
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetch = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "blocked-dates-list" },
     });

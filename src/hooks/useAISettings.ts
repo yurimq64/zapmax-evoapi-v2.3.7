@@ -36,21 +36,24 @@ const defaults: AISettings = {
 
 export function useAISettings() {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<AISettings>(defaults);
-  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<AISettings>(() => {
+    const cached = localStorage.getItem("zapmax_ai_settings");
+    return cached ? JSON.parse(cached) : defaults;
+  });
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      setLoading(true);
+      // setLoading(true);
       const { data, error } = await supabase.functions.invoke("data-api", {
         body: { _action: "ai-settings-get" },
       });
 
       if (!error && data?.success && data.data) {
         const d = data.data;
-        setSettings({
+        const newSettings = {
           ai_enabled: d.ai_enabled ?? true,
           focus_mode: d.focus_mode || defaults.focus_mode,
           tone: d.tone || defaults.tone,
@@ -64,7 +67,9 @@ export function useAISettings() {
           business_hours: d.business_hours || "",
           openai_api_key: d.openai_api_key || "",
           openai_model: d.openai_model || defaults.openai_model,
-        });
+        };
+        setSettings(newSettings);
+        localStorage.setItem("zapmax_ai_settings", JSON.stringify(newSettings));
       }
       setLoading(false);
     };
@@ -81,6 +86,9 @@ export function useAISettings() {
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "ai-settings-upsert", ...finalSettings },
     });
+    if (!error && data?.success) {
+      localStorage.setItem("zapmax_ai_settings", JSON.stringify(finalSettings));
+    }
     setSaving(false);
     return !error && data?.success;
   }, [settings]);

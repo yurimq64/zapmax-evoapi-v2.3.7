@@ -21,11 +21,11 @@ export interface ReminderLog {
 export function useReminderLogs() {
   const { user } = useAuth();
   const [logs, setLogs] = useState<ReminderLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "reminder-logs-list" },
     });

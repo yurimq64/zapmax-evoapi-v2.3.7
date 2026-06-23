@@ -83,12 +83,21 @@ const callAdmin = async (action: string, payload: Record<string, unknown> = {}) 
 export default function RoadmapTab() {
   const { t } = useLanguage();
   const r = t.admin.roadmap;
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [localItems, setLocalItems] = useState<RoadmapItem[]>([]);
-  const [originalItems, setOriginalItems] = useState<RoadmapItem[]>([]);
-  const [voteCounts, setVoteCounts] = useState<Record<string, number>>({});
+  const [localItems, setLocalItems] = useState<RoadmapItem[]>(() => {
+    const cached = localStorage.getItem("zapmax_admin_roadmap_items");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [originalItems, setOriginalItems] = useState<RoadmapItem[]>(() => {
+    const cached = localStorage.getItem("zapmax_admin_roadmap_items");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [voteCounts, setVoteCounts] = useState<Record<string, number>>(() => {
+    const cached = localStorage.getItem("zapmax_admin_roadmap_votes");
+    return cached ? JSON.parse(cached) : {};
+  });
 
   const statusOptions = [
     { value: "done", label: r.statusDone },
@@ -98,12 +107,13 @@ export default function RoadmapTab() {
   ];
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    // setLoading(true);
     try {
       const json = await callAdmin("roadmap-list-all");
       if (json.success && json.data) {
         setLocalItems(json.data);
         setOriginalItems(json.data);
+        localStorage.setItem("zapmax_admin_roadmap_items", JSON.stringify(json.data));
       }
     } catch (e) { console.error("Failed to load roadmap:", e); }
     setLoading(false);
@@ -112,7 +122,10 @@ export default function RoadmapTab() {
   const fetchVoteCounts = useCallback(async () => {
     try {
       const json = await callAdmin("roadmap-vote-counts");
-      if (json.success && json.data) setVoteCounts(json.data);
+      if (json.success && json.data) {
+        setVoteCounts(json.data);
+        localStorage.setItem("zapmax_admin_roadmap_votes", JSON.stringify(json.data));
+      }
     } catch {}
   }, []);
 
@@ -178,7 +191,8 @@ export default function RoadmapTab() {
     } catch { toast.error(r.visibilityError); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  // Silent loading
+  // if (loading) return ...;
 
   return (
     <div className="space-y-4 sm:space-y-6">

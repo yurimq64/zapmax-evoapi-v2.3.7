@@ -40,15 +40,19 @@ type RefreshOptions = {
 
 export function useConversations() {
   const { user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    const cached = localStorage.getItem("zapmax_conversations");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
   const isFetchingRef = useRef(false);
 
   const fetchConversations = useCallback(async ({ background = false }: RefreshOptions = {}) => {
     if (!user) return;
     if (isFetchingRef.current) return;
 
-    if (!background) setLoading(true);
+    // Silent loading
+    // if (!background) setLoading(true);
     isFetchingRef.current = true;
 
     try {
@@ -59,12 +63,12 @@ export function useConversations() {
       if (error) {
         console.error("Error fetching conversations:", error);
       } else if (data?.success) {
-        setConversations(
-          (data.data || []).map((c: any) => ({
-            ...c,
-            contact: c.contact || { id: c.contact_id, name: "Desconhecido", phone: "", avatar_url: null },
-          }))
-        );
+        const list = (data.data || []).map((c: any) => ({
+          ...c,
+          contact: c.contact || { id: c.contact_id, name: "Desconhecido", phone: "", avatar_url: null },
+        }));
+        setConversations(list);
+        localStorage.setItem("zapmax_conversations", JSON.stringify(list));
       }
     } catch (error) {
       console.error("Unexpected error fetching conversations:", error);
@@ -117,7 +121,11 @@ export function useConversations() {
 }
 
 export function useMessages(conversationId: string | null) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (!conversationId) return [];
+    const cached = localStorage.getItem(`zapmax_messages_${conversationId}`);
+    return cached ? JSON.parse(cached) : [];
+  });
   const [loading, setLoading] = useState(false);
   const isFetchingRef = useRef(false);
 
@@ -129,7 +137,8 @@ export function useMessages(conversationId: string | null) {
     }
 
     if (isFetchingRef.current) return;
-    if (!background) setLoading(true);
+    // Silent loading
+    // if (!background) setLoading(true);
     isFetchingRef.current = true;
 
     try {
@@ -141,6 +150,9 @@ export function useMessages(conversationId: string | null) {
         console.error("Error fetching messages:", error);
       } else if (data?.success) {
         setMessages(data.data || []);
+        if (conversationId) {
+          localStorage.setItem(`zapmax_messages_${conversationId}`, JSON.stringify(data.data || []));
+        }
       }
     } catch (error) {
       console.error("Unexpected error fetching messages:", error);

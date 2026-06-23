@@ -40,8 +40,8 @@ SELECT cron.schedule(
   $$
   SELECT
     net.http_post(
-      url := 'https://SEU_PROJECT_REF.supabase.co/functions/v1/send-reminders',
-      headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_ANON_KEY"}'::jsonb,
+      url := 'https://SEU_PROJECT_ID.supabase.co/functions/v1/send-reminders',
+      headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_PUBLISHABLE_KEY"}'::jsonb,
       body := concat('{"time": "', now(), '"}')::jsonb
     ) AS request_id;
   $$

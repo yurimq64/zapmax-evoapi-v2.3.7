@@ -73,35 +73,35 @@ serve(async (req) => {
     }
 
     if (action === "users") {
-      // Fetch all users with profiles, tenant info, subscriptions
-      const { data: profiles } = await adminClient
-        .from("profiles")
-        .select("user_id, full_name, phone, company, tenant_id, created_at")
-        .order("created_at", { ascending: false });
+      // 1. Get all auth users as the primary source
+      const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
+        perPage: 1000,
+      });
 
-      if (!profiles) {
-        return new Response(JSON.stringify({ success: true, data: [] }), {
+      if (authError || !authData) {
+        console.error("Error listing auth users:", authError);
+        return new Response(JSON.stringify({ success: false, error: authError?.message || "Failed to list users" }), {
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Get auth users for emails
-      const userIds = profiles.map((p) => p.user_id);
-      const { data: { users: authUsers } } = await adminClient.auth.admin.listUsers({
-        perPage: 1000,
-      });
+      const authUsers = authData.users;
 
-      const emailMap: Record<string, string> = {};
-      const lastSignInMap: Record<string, string> = {};
-      for (const au of authUsers || []) {
-        emailMap[au.id] = au.email || "";
-        lastSignInMap[au.id] = au.last_sign_in_at || "";
+      // 2. Fetch all profiles to map details
+      const { data: profiles, error: profilesError } = await adminClient
+        .from("profiles")
+        .select("user_id, full_name, phone, company, tenant_id, created_at");
+
+      const profileMap: Record<string, any> = {};
+      for (const p of profiles || []) {
+        profileMap[p.user_id] = p;
       }
 
-      // Get tenant members for instance/message counts
-      const tenantIds = [...new Set(profiles.map((p) => p.tenant_id).filter(Boolean))];
+      // 3. Get tenant members for instance/message counts
+      const tenantIds = [...new Set((profiles || []).map((p) => p.tenant_id).filter(Boolean))];
 
-      // Get instance counts per tenant
+      // 4. Get instance counts per tenant
       const { data: instanceCounts } = await adminClient
         .from("whatsapp_instances")
         .select("tenant_id");
@@ -111,7 +111,7 @@ serve(async (req) => {
         instanceCountMap[ic.tenant_id] = (instanceCountMap[ic.tenant_id] || 0) + 1;
       }
 
-      // Get message counts per tenant
+      // 5. Get message counts per tenant
       const { data: messageCounts } = await adminClient
         .from("messages")
         .select("tenant_id");
@@ -121,7 +121,7 @@ serve(async (req) => {
         messageCountMap[mc.tenant_id] = (messageCountMap[mc.tenant_id] || 0) + 1;
       }
 
-      // Get subscriptions
+      // 6. Get subscriptions
       const { data: subscriptions } = await adminClient
         .from("subscriptions")
         .select("tenant_id, status, plan:plans(name)")
@@ -137,20 +137,34 @@ serve(async (req) => {
         }
       }
 
-      const users = profiles.map((p) => ({
-        id: p.user_id,
-        name: p.full_name || "Sem nome",
-        email: emailMap[p.user_id] || "",
-        phone: p.phone || "",
-        company: p.company || "",
-        tenant_id: p.tenant_id,
-        plan: subMap[p.tenant_id || ""]?.plan || "Sem plano",
-        status: subMap[p.tenant_id || ""]?.status || "active",
-        instances: instanceCountMap[p.tenant_id || ""] || 0,
-        messages: messageCountMap[p.tenant_id || ""] || 0,
-        lastActive: lastSignInMap[p.user_id] || "",
-        created_at: p.created_at,
-      }));
+      // 7. Map everything together, using authUsers as base
+      const users = authUsers.map((au) => {
+        const p = profileMap[au.id];
+        const tenantId = p?.tenant_id || "";
+        
+        // Use user_metadata (SDK standard) or raw_user_meta_data
+        const meta = au.user_metadata || au.raw_user_meta_data || {};
+        const name = p?.full_name || 
+                     meta.display_name || 
+                     meta.full_name || 
+                     meta.user_name || 
+                     "Sem nome";
+
+        return {
+          id: au.id,
+          name: name,
+          email: au.email || "",
+          phone: p?.phone || meta.phone || "",
+          company: p?.company || "",
+          tenant_id: tenantId,
+          plan: subMap[tenantId]?.plan || "Sem plano",
+          status: subMap[tenantId]?.status || "active",
+          instances: instanceCountMap[tenantId] || 0,
+          messages: messageCountMap[tenantId] || 0,
+          lastActive: au.last_sign_in_at || "",
+          created_at: au.created_at,
+        };
+      });
 
       return new Response(JSON.stringify({ success: true, data: users }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -332,9 +346,25 @@ serve(async (req) => {
         });
       }
 
-      // Delete from auth (cascades to profiles, etc.)
+      // 1. Limpeza manual de tabelas que bloqueiam a exclusão por constraints mal formadas
+      // NOTA: Algumas tabelas estão como NOT NULL mas tentam fazer SET NULL no delete, o que gera erro 500.
+      
+      // Remove agendamentos criados pelo usuário (bloqueado em schedules.created_by)
+      await adminClient.from("schedules").delete().eq("created_by", targetUserId);
+      
+      // Remove logs de transferência de conversa (bloqueado em conversation_transfers.transferred_by)
+      await adminClient.from("conversation_transfers").delete().eq("transferred_by", targetUserId);
+      
+      // Remove votos do roadmap
+      await adminClient.from("roadmap_votes").delete().eq("user_id", targetUserId);
+      
+      // Remove preferências do usuário
+      await adminClient.from("user_preferences").delete().eq("user_id", targetUserId);
+
+      // 2. Delete from auth (cascades to profiles, tenant_members, etc.)
       const { error } = await adminClient.auth.admin.deleteUser(targetUserId);
       if (error) {
+        console.error("Error deleting auth user:", error);
         return new Response(JSON.stringify({ success: false, error: error.message }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -880,6 +910,79 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    if (action === "delete-instance") {
+      if (req.method !== "POST") {
+        return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {
+          status: 405,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let body;
+      try {
+        body = await req.json();
+      } catch (e) {
+        body = {};
+      }
+      
+      const instance_id = body.instance_id || body.instanceId || url.searchParams.get("instance_id");
+      
+      if (!instance_id) {
+        return new Response(JSON.stringify({ success: false, error: "instance_id required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Fetch instance data to get evolution_instance_id
+      const { data: instance, error: fetchError } = await adminClient
+        .from("whatsapp_instances")
+        .select("evolution_instance_id")
+        .eq("id", instance_id)
+        .maybeSingle();
+
+      if (fetchError || !instance) {
+        return new Response(JSON.stringify({ success: false, error: "Instance not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Delete from Evolution API if possible
+      const evolutionUrl = Deno.env.get("EVOLUTION_API_URL");
+      const evolutionKey = Deno.env.get("EVOLUTION_API_KEY");
+
+      if (evolutionUrl && evolutionKey && instance.evolution_instance_id) {
+        try {
+          const url = evolutionUrl.trim().replace(/\/+$/, "");
+          await fetch(`${url}/instance/delete/${instance.evolution_instance_id}`, {
+            method: "DELETE",
+            headers: { "apikey": evolutionKey.trim() },
+          });
+          // Not strictly failing if API fails, as the instance might be gone already
+        } catch (e) {
+          console.error(`Evolution API delete error: ${e.message}`);
+        }
+      }
+
+      // Delete from DB
+      const { error: deleteError } = await adminClient
+        .from("whatsapp_instances")
+        .delete()
+        .eq("id", instance_id);
+
+      if (deleteError) {
+        return new Response(JSON.stringify({ success: false, error: deleteError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ success: false, error: "Unknown action" }), {

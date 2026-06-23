@@ -81,10 +81,10 @@ export default function Dashboard() {
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
 
   const stats = [
-    { label: t.dashboard.stats.totalConversations, value: loading ? "..." : String(metrics.totalConversations), icon: MessageCircle },
-    { label: t.dashboard.stats.inboundMessages, value: loading ? "..." : String(metrics.inboundMessages), icon: Bot },
-    { label: t.dashboard.stats.outboundMessages, value: loading ? "..." : String(metrics.outboundMessages), icon: Users },
-    { label: t.dashboard.stats.contacts, value: loading ? "..." : String(metrics.totalContacts), icon: Users },
+    { label: t.dashboard.stats.totalConversations, value: String(metrics.totalConversations || 0), icon: MessageCircle },
+    { label: t.dashboard.stats.inboundMessages, value: String(metrics.inboundMessages || 0), icon: Bot },
+    { label: t.dashboard.stats.outboundMessages, value: String(metrics.outboundMessages || 0), icon: Users },
+    { label: t.dashboard.stats.contacts, value: String(metrics.totalContacts || 0), icon: Users },
   ];
 
   return (
@@ -123,7 +123,7 @@ export default function Dashboard() {
       </div>
 
       {/* Trial / Free plan banner */}
-      {!planLoading && !isAdmin && trialBlocked && (
+      {!isAdmin && trialBlocked && (
         <Card className="border-destructive/40 bg-destructive/10">
           <CardContent className="flex items-center justify-between py-3 sm:py-4 gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -149,7 +149,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {!planLoading && !isAdmin && !trialBlocked && hasPlan && plan && plan.price_cents === 0 && (
+      {!isAdmin && !trialBlocked && hasPlan && plan && plan.price_cents === 0 && (
         <Card className="border-primary/30 bg-primary/5">
           <CardContent className="flex items-center justify-between py-3 sm:py-4 gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -181,13 +181,8 @@ export default function Dashboard() {
       )}
 
       {/* Setup Card */}
-      <AnimatePresence>
-        {completedSteps < totalSteps && (
-          <motion.div
-            initial={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: "hidden" }}
-            transition={{ duration: 0.4, ease: "easeInOut" }}
-          >
+      {completedSteps < totalSteps && (
+        <div>
             <Card>
               <CardContent className="pt-4 sm:pt-6">
                 <div className="text-center mb-3 sm:mb-4">
@@ -205,11 +200,10 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-2 sm:space-y-3">
                   {setupStepsDef.map((step) => (
-                    <motion.div
+                    <div
                       key={step.key}
                       className="flex items-center justify-between py-1.5 sm:py-2"
-                      animate={setupDone[step.key] ? { opacity: 0.6, scale: 0.98 } : { opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
+                      style={{ opacity: setupDone[step.key] ? 0.6 : 1, transform: setupDone[step.key] ? "scale(0.98)" : "scale(1)" }}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <CheckCircle2
@@ -225,129 +219,124 @@ export default function Dashboard() {
                           {step.action} <ChevronRight className="h-3 w-3" />
                         </button>
                       )}
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
       {/* AI Toggle */}
-      {!aiLoading && (
-        <Card>
-          <CardContent className="flex items-center justify-between py-3 sm:py-4">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-semibold text-xs sm:text-sm">
-                  {aiSettings.ai_enabled ? t.dashboard.aiResponding : t.dashboard.aiActive}
-                </h3>
-                <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
-                  {aiSettings.ai_enabled
-                    ? t.dashboard.aiRespondingDesc
-                    : t.dashboard.aiPausedDesc}
-                </p>
-              </div>
+      <Card>
+        <CardContent className="flex items-center justify-between py-3 sm:py-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+              <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             </div>
-            <Switch
-              checked={aiSettings.ai_enabled}
-              disabled={aiSaving}
-              onCheckedChange={async (v) => {
-                updateAI({ ai_enabled: v });
-                const ok = await saveAI({ ai_enabled: v });
-                if (!ok) {
-                  updateAI({ ai_enabled: !v });
-                  toast.error(t.dashboard.aiToggleError);
-                }
-              }}
-            />
-          </CardContent>
-        </Card>
-      )}
+            <div className="min-w-0">
+              <h3 className="font-semibold text-xs sm:text-sm">
+                {aiSettings.ai_enabled ? t.dashboard.aiResponding : t.dashboard.aiActive}
+              </h3>
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                {aiSettings.ai_enabled
+                  ? t.dashboard.aiRespondingDesc
+                  : t.dashboard.aiPausedDesc}
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={aiSettings.ai_enabled}
+            disabled={aiSaving}
+            onCheckedChange={async (v) => {
+              updateAI({ ai_enabled: v });
+              const ok = await saveAI({ ai_enabled: v });
+              if (!ok) {
+                updateAI({ ai_enabled: !v });
+                toast.error(t.dashboard.aiToggleError);
+              }
+            }}
+          />
+        </CardContent>
+      </Card>
 
       {/* Plan Usage Card */}
-      {!planLoading && hasPlan && plan && usage && (
-        <Card>
-          <CardHeader className="pb-2 sm:pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                <Crown className="h-4 w-4 text-primary" /> {t.dashboard.planUsage}
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">
-                  {plan.name}
+      <Card>
+        <CardHeader className="pb-2 sm:pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+              <Crown className="h-4 w-4 text-primary" /> {t.dashboard.planUsage}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                {plan?.name || "..."}
+              </Badge>
+              {subscription?.status === "trial" && (
+                <Badge variant="secondary" className="text-xs">
+                  Trial
                 </Badge>
-                {subscription?.status === "trial" && (
-                  <Badge variant="secondary" className="text-xs">
-                    Trial
-                  </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pb-3 sm:pb-4 space-y-3">
+          {([
+            {
+              label: t.dashboard.whatsappInstances,
+              icon: Smartphone,
+              used: usage?.instances || 0,
+              max: plan?.max_instances || 0,
+              key: "instances" as const,
+            },
+            {
+              label: t.dashboard.monthlyMessages,
+              icon: MessageCircle,
+              used: usage?.messages_this_month || 0,
+              max: plan?.max_messages || 0,
+              key: "messages" as const,
+            },
+            {
+              label: t.dashboard.storage,
+              icon: HardDrive,
+              used: usage?.storage_mb || 0,
+              max: plan?.storage_mb || 0,
+              key: "storage" as const,
+              suffix: "MB",
+            },
+          ] as { label: string; icon: any; used: number; max: number | null; key: "instances" | "messages" | "storage"; suffix?: string }[]).map((item) => {
+            const percent = !plan || item.max === null ? 0 : getUsagePercent(item.key);
+            const isUnlimited = item.max === null;
+            const isNearLimit = percent >= 80;
+            const isAtLimit = percent >= 100;
+            return (
+              <div key={item.key} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <item.icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </span>
+                  <span className={`font-medium ${isAtLimit ? "text-destructive" : isNearLimit ? "text-yellow-500" : "text-foreground"}`}>
+                    {item.used}{item.suffix ? ` ${item.suffix}` : ""}
+                    {" / "}
+                    {isUnlimited ? "∞" : `${item.max}${item.suffix ? ` ${item.suffix}` : ""}`}
+                  </span>
+                </div>
+                {!isUnlimited && (
+                  <Progress
+                    value={Math.min(percent, 100)}
+                    className={`h-1.5 ${isAtLimit ? "[&>div]:bg-destructive" : isNearLimit ? "[&>div]:bg-yellow-500" : ""}`}
+                  />
                 )}
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pb-3 sm:pb-4 space-y-3">
-            {([
-              {
-                label: t.dashboard.whatsappInstances,
-                icon: Smartphone,
-                used: usage.instances,
-                max: plan.max_instances,
-                key: "instances" as const,
-              },
-              {
-                label: t.dashboard.monthlyMessages,
-                icon: MessageCircle,
-                used: usage.messages_this_month,
-                max: plan.max_messages,
-                key: "messages" as const,
-              },
-              {
-                label: t.dashboard.storage,
-                icon: HardDrive,
-                used: usage.storage_mb,
-                max: plan.storage_mb,
-                key: "storage" as const,
-                suffix: "MB",
-              },
-            ] as { label: string; icon: any; used: number; max: number | null; key: "instances" | "messages" | "storage"; suffix?: string }[]).map((item) => {
-              const percent = item.max === null ? 0 : getUsagePercent(item.key);
-              const isUnlimited = item.max === null;
-              const isNearLimit = percent >= 80;
-              const isAtLimit = percent >= 100;
-              return (
-                <div key={item.key} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <item.icon className="h-3.5 w-3.5" />
-                      {item.label}
-                    </span>
-                    <span className={`font-medium ${isAtLimit ? "text-destructive" : isNearLimit ? "text-yellow-500" : "text-foreground"}`}>
-                      {item.used}{item.suffix ? ` ${item.suffix}` : ""}
-                      {" / "}
-                      {isUnlimited ? "∞" : `${item.max}${item.suffix ? ` ${item.suffix}` : ""}`}
-                    </span>
-                  </div>
-                  {!isUnlimited && (
-                    <Progress
-                      value={Math.min(percent, 100)}
-                      className={`h-1.5 ${isAtLimit ? "[&>div]:bg-destructive" : isNearLimit ? "[&>div]:bg-yellow-500" : ""}`}
-                    />
-                  )}
-                </div>
-              );
-            })}
-            <div className="pt-1">
-              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => navigate("/planos")}>
-                {plan.price_cents === 0 ? t.dashboard.upgrade : t.dashboard.managePlan}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            );
+          })}
+          <div className="pt-1">
+            <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => navigate("/planos")}>
+              {plan?.price_cents === 0 ? t.dashboard.upgrade : t.dashboard.managePlan}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

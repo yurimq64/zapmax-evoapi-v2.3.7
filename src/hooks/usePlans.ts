@@ -28,24 +28,36 @@ export interface Subscription {
 
 export function usePlans() {
   const { user } = useAuth();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<Plan[]>(() => {
+    const cached = localStorage.getItem("zapmax_plans");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [subscription, setSubscription] = useState<Subscription | null>(() => {
+    const cached = localStorage.getItem("zapmax_subscription");
+    return cached ? JSON.parse(cached) : null;
+  });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
-      setLoading(true);
+      // setLoading(true);
 
       const { data: plansRes } = await supabase.functions.invoke("data-api", {
         body: { _action: "plans-list-public" },
       });
-      if (plansRes?.success && plansRes.data) setPlans(plansRes.data);
+      if (plansRes?.success && plansRes.data) {
+        setPlans(plansRes.data);
+        localStorage.setItem("zapmax_plans", JSON.stringify(plansRes.data));
+      }
 
       if (user) {
         const { data: subRes } = await supabase.functions.invoke("data-api", {
           body: { _action: "subscription-get" },
         });
-        if (subRes?.success && subRes.data) setSubscription(subRes.data);
+        if (subRes?.success && subRes.data) {
+          setSubscription(subRes.data);
+          localStorage.setItem("zapmax_subscription", JSON.stringify(subRes.data));
+        }
       }
 
       setLoading(false);

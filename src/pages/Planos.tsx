@@ -43,13 +43,7 @@ export default function Planos() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-3rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+
 
   const currentPlanId = subscription?.plan_id;
   const isTrialing = subscription?.status === "trial";

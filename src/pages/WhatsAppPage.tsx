@@ -25,7 +25,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function WhatsApp() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { instances, loading, fetchInstances, createInstance, connectInstance, disconnectInstance, deleteInstance, checkInstanceStatus, setWebhook } = useWhatsAppInstances();
+  const { instances, loading, hasFetched, fetchInstances, createInstance, connectInstance, disconnectInstance, deleteInstance, checkInstanceStatus, setWebhook } = useWhatsAppInstances();
   const { plan, usage, hasPlan, trialBlocked, loading: planLimitsLoading, refetch: refetchPlanLimits } = usePlanLimits();
   const instanceLimitReached = hasPlan && !!plan && !!usage && usage.instances >= plan.max_instances;
   const [showNewModal, setShowNewModal] = useState(false);
@@ -124,13 +124,7 @@ export default function WhatsApp() {
     return <Badge variant={cfg.variant} className="text-xs"><Icon className="h-3 w-3 mr-1" /> {cfg.label}</Badge>;
   };
 
-  if (loading) {
-    return (
-      <div className="p-4 sm:p-6 flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -266,7 +260,7 @@ export default function WhatsApp() {
           ))}
         </AnimatePresence>
 
-        {instances.length === 0 && (
+        {instances.length === 0 && hasFetched && (
           <div className="col-span-full text-center py-12">
             <Smartphone className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
             <h3 className="font-semibold text-lg">{t.whatsapp.noInstances}</h3>

@@ -69,7 +69,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
   const { isAdmin: isAdminRole } = useUserRole();
-  const { plan, trialDaysLeft, isAdmin: isAdminPlan, loading: planLoading } = usePlanLimits();
+  const { plan, trialDaysLeft, messageLimitReached, isAdmin: isAdminPlan, loading: planLoading } = usePlanLimits();
   const { t } = useLanguage();
   const { openWhatsApp } = useFloatingButtonPhone();
 
@@ -142,6 +142,11 @@ export function AppSidebar() {
                   >
                     <item.icon className="h-4 w-4" />
                     <span>{item.title}</span>
+                    {!collapsed && (item.path === "/conversas" || item.path === "/kanban") && messageLimitReached && (
+                      <div className="ml-auto flex items-center justify-center">
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive animate-pulse" />
+                      </div>
+                    )}
                   </SidebarMenuButton>
                 </motion.div>
               </SidebarMenuItem>

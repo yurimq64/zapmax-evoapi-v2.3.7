@@ -65,7 +65,7 @@ export default function Cadastro() {
     setLoading(true);
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email, password,
-      options: { data: { full_name: name, phone }, emailRedirectTo: window.location.origin },
+      options: { data: { full_name: name, phone }, emailRedirectTo: `${window.location.origin}/#/login` },
     });
 
     if (authError) { setLoading(false); toast.error(authError.message); return; }

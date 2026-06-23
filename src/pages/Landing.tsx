@@ -39,6 +39,19 @@ export default function Landing() {
   const [plans, setPlans] = useState<LandingPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
 
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      const offset = 80;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - offset;
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth",
+      });
+    }
+  };
+
   const features = [
     { icon: Bot, title: t.landing.features.items.ai.title, description: t.landing.features.items.ai.desc },
     { icon: CalendarDays, title: t.landing.features.items.scheduling.title, description: t.landing.features.items.scheduling.desc },
@@ -50,12 +63,22 @@ export default function Landing() {
 
   function getPlanFeatures(plan: LandingPlan): string[] {
     const f: string[] = [];
-    f.push(`${plan.max_instances} ${plan.max_instances > 1 ? "instances" : "instance"} WhatsApp`);
-    f.push(plan.max_messages ? `${plan.max_messages} msg/month` : t.plans.features.unlimitedMessages);
-    f.push(plan.name === "Starter" ? "Basic AI" : plan.name === "Enterprise" || plan.name === "Empresarial" ? "Custom AI" : "Advanced AI");
-    f.push(plan.name === "Starter" ? "Simple scheduling" : "Full scheduling");
-    f.push(`${plan.support_level} support`);
-    if (plan.name !== "Starter") f.push("Advanced reports");
+    f.push(t.plans.features.whatsappNumbers.replace("{count}", plan.max_instances.toString()));
+    f.push(plan.max_messages ? t.plans.features.aiMessagesMonth.replace("{count}", plan.max_messages.toString()) : t.plans.features.unlimitedMessages);
+    
+    // AI level
+    if (plan.name === "Starter") f.push(t.plans.features.basicAI);
+    else if (plan.name === "Enterprise" || plan.name === "Empresarial") f.push(t.plans.features.customAI);
+    else f.push(t.plans.features.advancedAI);
+
+    // Scheduling
+    if (plan.name === "Starter") f.push(t.plans.features.simpleScheduling);
+    else f.push(t.plans.features.fullScheduling);
+
+    // Support
+    f.push(t.plans.features.support.replace("{level}", (plan.support_level === "Standard" ? "Padrão" : plan.support_level === "Priority" ? "Prioritário" : plan.support_level) || ""));
+
+    if (plan.name !== "Starter") f.push(t.plans.features.advancedReports);
     return f;
   }
 
@@ -84,9 +107,9 @@ export default function Landing() {
             <span className="text-xl font-bold">Zap<span className="text-primary">Max</span></span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">{t.landing.nav.features}</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">{t.landing.nav.plans}</a>
-            <a href="#stats" className="hover:text-foreground transition-colors">{t.landing.nav.results}</a>
+            <button onClick={() => scrollToSection("features")} className="hover:text-foreground transition-colors">{t.landing.nav.features}</button>
+            <button onClick={() => scrollToSection("pricing")} className="hover:text-foreground transition-colors">{t.landing.nav.plans}</button>
+            <button onClick={() => scrollToSection("stats")} className="hover:text-foreground transition-colors">{t.landing.nav.results}</button>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate("/login")}>{t.landing.nav.signIn}</Button>
@@ -162,7 +185,7 @@ export default function Landing() {
             <h2 className="text-3xl md:text-4xl font-bold">{t.landing.pricing.title.split("{highlight}")[0]}<span className="text-primary">{t.landing.pricing.title.split("{highlight}")[1]?.split("{/highlight}")[0]}</span>{t.landing.pricing.title.split("{/highlight}")[1]}</h2>
             <p className="text-muted-foreground mt-3">{t.landing.pricing.subtitle}</p>
           </motion.div>
-          {plansLoading ? (
+          {false ? (
             <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
           ) : (
             <motion.div variants={staggerContainer} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }} className={`grid gap-6 max-w-5xl mx-auto ${plans.length >= 3 ? "md:grid-cols-3" : plans.length === 2 ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
@@ -179,11 +202,11 @@ export default function Landing() {
                       )}
                       <CardContent className="py-8 text-center">
                         <h3 className="text-xl font-bold">{plan.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{plan.max_instances} instance{plan.max_instances > 1 ? "s" : ""} WhatsApp</p>
+                        <p className="text-sm text-muted-foreground mt-1">{t.plans.features.whatsappNumbers.replace("{count}", plan.max_instances.toString())}</p>
                         <div className="mt-6">
                           <span className="text-sm text-muted-foreground">R$</span>
                           <span className="text-5xl font-extrabold">{formatPrice(plan.price_cents)}</span>
-                          <span className="text-muted-foreground">/mês</span>
+                          <span className="text-muted-foreground">{t.plans.perMonth}</span>
                         </div>
                         <Button className={`w-full mt-6 ${isPopular ? "bg-primary hover:bg-primary/90" : ""}`} variant={isPopular ? "default" : "outline"} onClick={() => { if (plan.checkout_url?.trim()) { window.open(plan.checkout_url.trim(), "_blank", "noopener,noreferrer"); } else { navigate("/cadastro"); } }}>
                           {t.landing.pricing.startNow} <ChevronRight className="h-4 w-4 ml-1" />

@@ -48,9 +48,20 @@ serve(async (req) => {
     // Helper: verify tenant membership
     const verifyTenant = async () => {
       const tenantId = await getTenant();
-      if (!tenantId) return { tenantId: null, error: jsonResponse({ success: false, error: "No tenant found" }, 400) };
+      if (!tenantId) {
+        // Fallback for admins: use the first tenant available
+        if (await checkAdmin()) {
+          const { data: firstTenant } = await adminClient.from("tenants").select("id").limit(1).maybeSingle();
+          if (firstTenant) return { tenantId: firstTenant.id, error: null };
+        }
+        return { tenantId: null, error: jsonResponse({ success: false, error: "No tenant found" }, 400) };
+      }
       const { data: isMember } = await adminClient.rpc("is_tenant_member", { _user_id: user.id, _tenant_id: tenantId });
-      if (!isMember) return { tenantId: null, error: jsonResponse({ success: false, error: "Forbidden" }, 403) };
+      if (!isMember) {
+        // Fallback for admins: let them view even if not explicit member
+        if (await checkAdmin()) return { tenantId, error: null };
+        return { tenantId: null, error: jsonResponse({ success: false, error: "Forbidden" }, 403) };
+      }
       return { tenantId, error: null };
     };
 

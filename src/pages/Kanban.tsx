@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Loader2, GripVertical, Pencil, Trash2, X, Phone,
-  MessageCircle, MoreHorizontal, Tag, ChevronDown, ChevronUp,
+  MessageCircle, MoreHorizontal, Tag, ChevronDown, ChevronUp, Zap, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ import {
 } from "@dnd-kit/core";
 import { useSortable, SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 
 const COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
@@ -246,6 +247,7 @@ export default function Kanban() {
     createColumn, updateColumn, deleteColumn,
     moveConversation, reorderColumns,
   } = useKanban();
+  const { plan, messageLimitReached, loading: planLimitsLoading, refetch: refetchPlanLimits } = usePlanLimits();
 
   const [showCreateCol, setShowCreateCol] = useState(false);
   const [editCol, setEditCol] = useState<{ id: string; name: string; color: string } | null>(null);
@@ -344,10 +346,29 @@ export default function Kanban() {
 
   const handleOpenChat = (convId: string) => navigate(`/conversas?id=${convId}`);
 
-  if (loading) {
+  // Silent loading
+  // if (loading) { ... }
+
+  if (!planLimitsLoading && messageLimitReached) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-3rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 bg-background/95 backdrop-blur-sm h-[calc(100vh-4rem)]">
+        <div className="h-20 w-20 rounded-full bg-destructive/10 flex items-center justify-center mb-2 animate-pulse">
+          <Zap className="h-10 w-10 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold">Limite de Mensagens Atingido</h2>
+        <p className="text-muted-foreground max-w-sm">
+          Seu plano ({plan?.name}) atingiu o limite mensal de <strong>{plan?.max_messages}</strong> mensagens. 
+          Acesso ao Kanban bloqueado para garantir a integridade do sistema.
+          Atualize seu plano para continuar atendendo seus clientes.
+        </p>
+        <div className="flex gap-3 pt-2">
+          <Button onClick={() => navigate("/planos")} className="font-bold">
+            Ver Planos e Upgrade
+          </Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Recarregar
+          </Button>
+        </div>
       </div>
     );
   }

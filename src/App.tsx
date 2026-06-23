@@ -3,10 +3,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "./contexts/AuthContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { MotionConfig } from "framer-motion";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AppLayout } from "./components/layout/AppLayout";
 import Landing from "./pages/Landing";
@@ -43,43 +44,45 @@ const App = () => {
 
   return (
   <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AuthProvider>
-            <LanguageProvider>
-            <Routes>
-              {/* Public */}
-              <Route path="/" element={<Landing />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/cadastro" element={<Cadastro />} />
-              <Route path="/privacidade" element={<PrivacyPolicy />} />
-              <Route path="/termos" element={<TermsOfUse />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+    <MotionConfig transition={{ duration: 0 }}>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <HashRouter>
+            <AuthProvider>
+              <LanguageProvider>
+              <Routes>
+                {/* Public */}
+                <Route path="/" element={<Landing />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/cadastro" element={<Cadastro />} />
+                <Route path="/privacidade" element={<PrivacyPolicy />} />
+                <Route path="/termos" element={<TermsOfUse />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
 
-              {/* App (authenticated) */}
-              <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/conversas" element={<Conversas />} />
-                <Route path="/kanban" element={<Kanban />} />
-                <Route path="/contatos" element={<Contatos />} />
-                <Route path="/whatsapp" element={<WhatsAppPage />} />
-                <Route path="/agendamentos" element={<Agendamentos />} />
-                <Route path="/configuracoes" element={<Configuracoes />} />
-                <Route path="/planos" element={<Planos />} />
-                <Route path="/como-usar" element={<ComoUsar />} />
-                <Route path="/roadmap" element={<Roadmap />} />
-                <Route path="/admin" element={<Admin />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            </LanguageProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+                {/* App (authenticated) */}
+                <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/conversas" element={<Conversas />} />
+                  <Route path="/kanban" element={<Kanban />} />
+                  <Route path="/contatos" element={<Contatos />} />
+                  <Route path="/whatsapp" element={<WhatsAppPage />} />
+                  <Route path="/agendamentos" element={<Agendamentos />} />
+                  <Route path="/configuracoes" element={<Configuracoes />} />
+                  <Route path="/planos" element={<Planos />} />
+                  <Route path="/como-usar" element={<ComoUsar />} />
+                  <Route path="/roadmap" element={<Roadmap />} />
+                  <Route path="/admin" element={<Admin />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              </LanguageProvider>
+            </AuthProvider>
+          </HashRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   </ThemeProvider>
   );
 };

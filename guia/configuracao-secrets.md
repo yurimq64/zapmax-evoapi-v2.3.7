@@ -13,10 +13,7 @@ Secrets são variáveis de ambiente criptografadas armazenadas no Supabase. Elas
 ## Secrets Necessários
 
 | Secret                      | Obrigatório | Descrição                                                    | Onde obter                                                                      |
-| --------------------------- | ----------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `SUPABASE_URL`              | ✅ Sim      | URL do seu projeto Supabase                                  | Supabase Dashboard → Settings → API → Project URL                               |
-| `SUPABASE_ANON_KEY`         | ✅ Sim      | Chave pública (anon) do projeto                              | Supabase Dashboard → Settings → API → anon/public key                           |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ Sim      | Chave de serviço com acesso admin (nunca exponha ao cliente) | Supabase Dashboard → Settings → API → service_role key                          |
+| --------------------------- | ----------- | ------------------------------------------------------------ | 
 | `EVOLUTION_API_URL`         | ✅ Sim      | URL base da sua instância Evolution API                      | Servidor onde a Evolution API está hospedada (ex: `https://evo.seudominio.com`) |
 | `EVOLUTION_API_KEY`         | ✅ Sim      | Chave de autenticação da Evolution API                       | Definida na configuração da Evolution API (variável `AUTHENTICATION_API_KEY`)   |
 

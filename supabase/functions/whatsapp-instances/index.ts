@@ -79,14 +79,37 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    // Check if user is admin
+    const { data: adminRole } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", auth.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    const isAdmin = !!adminRole;
+
+    // 2. Get tenant
     const { data: membership } = await adminClient
       .from("tenant_members")
       .select("tenant_id")
       .eq("user_id", auth.userId)
-      .single();
+      .maybeSingle();
 
-    if (!membership) return jsonResponse({ success: false, error: "No tenant found" }, 403);
-    const tenantId = membership.tenant_id;
+    let tenantId = membership?.tenant_id;
+
+    if (!tenantId) {
+      if (isAdmin) {
+        // Fallback for admins: use the first tenant available
+        const { data: firstTenant } = await adminClient.from("tenants").select("id").limit(1).maybeSingle();
+        if (firstTenant) {
+          tenantId = firstTenant.id;
+        } else {
+          return jsonResponse({ success: false, error: "No tenant found in system" }, 403);
+        }
+      } else {
+        return jsonResponse({ success: false, error: "No tenant found" }, 403);
+      }
+    }
 
     // Parse body and action
     const body = req.method === "POST" ? await req.json() : {};
@@ -101,15 +124,6 @@ Deno.serve(async (req) => {
       "set-webhook",
       "update-settings",
     ]);
-
-    // Check if user is admin — admins bypass plan restrictions
-    const { data: adminRole } = await adminClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", auth.userId)
-      .eq("role", "admin")
-      .maybeSingle();
-    const isAdmin = !!adminRole;
 
     const planContext = (!isAdmin && actionsThatRequireActivePlan.has(action))
       ? await getTenantPlanContext(adminClient, tenantId)

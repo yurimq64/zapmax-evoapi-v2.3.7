@@ -4,8 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function useUserRole() {
   const { user, loading: authLoading } = useAuth();
-  const [role, setRole] = useState<string | null>(null);
-  const [isRoleLoading, setIsRoleLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(() => localStorage.getItem("zapmax_user_role"));
+  const [isRoleLoading, setIsRoleLoading] = useState(() => !localStorage.getItem("zapmax_user_role"));
 
   useEffect(() => {
     if (authLoading) return;
@@ -15,21 +15,25 @@ export function useUserRole() {
       return;
     }
 
-    setIsRoleLoading(true);
     supabase.functions.invoke("data-api", {
       body: { _action: "user-role-get" },
     }).then(({ data, error }) => {
       if (error || !data?.success) {
         console.error("Error fetching role:", error);
         setRole(null);
+        localStorage.removeItem("zapmax_user_role");
       } else {
         const roles = data.data || [];
         const isAdmin = roles.some((r: any) => r.role === "admin");
-        setRole(isAdmin ? "admin" : roles[0]?.role || null);
+        const finalRole = isAdmin ? "admin" : roles[0]?.role || null;
+        setRole(finalRole);
+        if (finalRole) localStorage.setItem("zapmax_user_role", finalRole);
+        else localStorage.removeItem("zapmax_user_role");
       }
       setIsRoleLoading(false);
     }).catch(() => {
       setRole(null);
+      localStorage.removeItem("zapmax_user_role");
       setIsRoleLoading(false);
     });
   }, [user?.id, authLoading]);

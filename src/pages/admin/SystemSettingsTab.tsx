@@ -19,9 +19,12 @@ interface SystemToggles { registration: boolean; autoTrial: boolean; detailedLog
 export default function SystemSettingsTab() {
   const { t } = useLanguage();
   const s = t.admin.system;
-  const [toggles, setToggles] = useState<SystemToggles>({ registration: true, autoTrial: true, detailedLogs: false });
+  const [toggles, setToggles] = useState<SystemToggles>(() => {
+    const cached = localStorage.getItem("zapmax_admin_system_settings");
+    return cached ? JSON.parse(cached) : { registration: true, autoTrial: true, detailedLogs: false };
+  });
   const [hasChanges, setHasChanges] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [resettingCache, setResettingCache] = useState(false);
@@ -45,7 +48,9 @@ export default function SystemSettingsTab() {
       const json = await callAdmin("get-settings");
       if (json.success && json.data) {
         const d = json.data;
-        setToggles({ registration: d.registration ?? true, autoTrial: d.auto_trial ?? true, detailedLogs: d.detailed_logs ?? false });
+        const newToggles = { registration: d.registration ?? true, autoTrial: d.auto_trial ?? true, detailedLogs: d.detailed_logs ?? false };
+        setToggles(newToggles);
+        localStorage.setItem("zapmax_admin_system_settings", JSON.stringify(newToggles));
       }
     } catch (e) { console.error("Failed to load settings:", e); }
     finally { setLoading(false); }
@@ -57,8 +62,11 @@ export default function SystemSettingsTab() {
     setSaving(true);
     try {
       const json = await callAdmin("save-settings", { registration: toggles.registration, auto_trial: toggles.autoTrial, detailed_logs: toggles.detailedLogs });
-      if (json.success) { setHasChanges(false); toast.success(s.savedOk); }
-      else toast.error(s.saveError);
+      if (json.success) {
+        setHasChanges(false);
+        toast.success(s.savedOk);
+        localStorage.setItem("zapmax_admin_system_settings", JSON.stringify(toggles));
+      } else toast.error(s.saveError);
     } catch { toast.error(s.saveError); }
     finally { setSaving(false); }
   };
@@ -87,7 +95,8 @@ export default function SystemSettingsTab() {
     finally { setDisconnecting(false); }
   };
 
-  if (loading) return <div className="space-y-4 sm:space-y-6"><Card><CardContent className="p-6 space-y-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</CardContent></Card></div>;
+  // Silent loading
+  // if (loading) return ...;
 
   return (
     <>

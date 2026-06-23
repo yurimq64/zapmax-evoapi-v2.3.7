@@ -17,12 +17,15 @@ export interface Contact {
 
 export function useContacts() {
   const { user } = useAuth();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [contacts, setContacts] = useState<Contact[]>(() => {
+    const cached = localStorage.getItem("zapmax_contacts");
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(false);
 
   const fetchContacts = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    // setLoading(true);
     const { data, error } = await supabase.functions.invoke("data-api", {
       body: { _action: "contacts-list" },
     });
@@ -30,6 +33,7 @@ export function useContacts() {
       console.error("Error fetching contacts:", error);
     } else if (data?.success) {
       setContacts(data.data || []);
+      localStorage.setItem("zapmax_contacts", JSON.stringify(data.data || []));
     }
     setLoading(false);
   }, [user]);
