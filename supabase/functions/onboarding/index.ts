@@ -85,18 +85,8 @@ Deno.serve(async (req) => {
       tenant_id: tenant.id, company: company_name.trim(),
     }).eq("user_id", userId);
 
-    // 8. Create subscription (trial) — respects auto_trial setting
-    let selectedPlanId = plan_id;
-    if (!selectedPlanId) {
-      const { data: freePlan } = await adminClient
-        .from("plans")
-        .select("id, trial_days")
-        .eq("active", true)
-        .order("price_cents", { ascending: true })
-        .limit(1)
-        .single();
-      selectedPlanId = freePlan?.id;
-    }
+    // 8. Create subscription only if a plan_id was explicitly provided
+    const selectedPlanId = plan_id || null;
 
     if (selectedPlanId) {
       const { data: planData } = await adminClient
@@ -139,6 +129,7 @@ Deno.serve(async (req) => {
         });
       }
     }
+    // If no plan_id provided, user starts with no plan/subscription
 
     return new Response(JSON.stringify({
       success: true,

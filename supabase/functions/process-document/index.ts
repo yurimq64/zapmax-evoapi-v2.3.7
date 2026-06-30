@@ -66,19 +66,8 @@ serve(async (req) => {
       });
     }
 
-    // Get user OpenAI settings
-    const { data: aiSettings, error: aiSettingsError } = await adminClient
-      .from("ai_settings")
-      .select("openai_api_key, openai_model")
-      .eq("tenant_id", doc.tenant_id)
-      .single();
-
-    if (aiSettingsError || !aiSettings?.openai_api_key) {
-      console.error("AI Settings error or missing API Key:", aiSettingsError);
-      return new Response(JSON.stringify({ success: false, error: "OpenAI API Key não configurada nas configurações de IA" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Nota: PDFs e arquivos de texto são processados localmente (sem IA).
+    // A chave da Anthropic só é necessária para imagens.
 
     // Update status to processing
     await adminClient.from("kb_documents").update({ processing_status: "processing" }).eq("id", document_id);
@@ -147,30 +136,40 @@ serve(async (req) => {
       };
       const mimeType = mimeMap[ext] || "image/jpeg";
 
-      // Call OpenAI to extract text
-      const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      // Usar Anthropic Claude Vision para extrair texto de imagens
+      const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+      if (!anthropicApiKey) {
+        await adminClient.from("kb_documents").update({ processing_status: "error" }).eq("id", document_id);
+        return new Response(JSON.stringify({ success: false, error: "ANTHROPIC_API_KEY não configurada no servidor" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${aiSettings.openai_api_key}`,
-          "Content-Type": "application/json",
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: aiSettings.openai_model || "gpt-4o-mini",
+          model: "claude-haiku-4-5",
+          max_tokens: 4096,
           messages: [
-            {
-              role: "system",
-              content: "You are a document text extractor. Extract ALL text content from the provided document. Return ONLY the extracted text, preserving the original structure (headers, lists, paragraphs). Do not add commentary or explanations. If it's a menu/price list, preserve all items and prices. If it's a FAQ, preserve all questions and answers.",
-            },
             {
               role: "user",
               content: [
                 {
-                  type: "image_url",
-                  image_url: { url: `data:${mimeType};base64,${base64}` },
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: mimeType,
+                    data: base64,
+                  },
                 },
                 {
                   type: "text",
-                  text: `Extract all text content from this ${doc.doc_type} document titled "${doc.title}". Return the complete text.`,
+                  text: `Extraia todo o conteúdo de texto deste documento ${doc.doc_type} intitulado "${doc.title}". Retorne apenas o texto completo extraído, preservando a estrutura original (cabeçalhos, listas, parágrafos, preços). Não adicione comentários ou explicações.`,
                 },
               ],
             },
@@ -180,28 +179,15 @@ serve(async (req) => {
 
       if (!aiResponse.ok) {
         const errText = await aiResponse.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errText);
-        } catch {
-          errorData = errText;
-        }
-
-        console.error("AI extraction error:", aiResponse.status, errorData);
+        console.error("Anthropic vision error:", aiResponse.status, errText);
         await adminClient.from("kb_documents").update({ processing_status: "error" }).eq("id", document_id);
-
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: "OpenAI API Error", 
-          details: errorData 
-        }), {
-          status: aiResponse.status, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        return new Response(JSON.stringify({ success: false, error: "Anthropic API Error", details: errText }), {
+          status: aiResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       const aiData = await aiResponse.json();
-      extractedContent = aiData.choices?.[0]?.message?.content || "";
+      extractedContent = aiData.content?.find((b: any) => b.type === "text")?.text || "";
     } else {
       // Fallback or unhandled extension
       await adminClient.from("kb_documents").update({ processing_status: "error" }).eq("id", document_id);

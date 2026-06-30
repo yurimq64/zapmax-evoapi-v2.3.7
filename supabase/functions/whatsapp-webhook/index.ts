@@ -64,22 +64,30 @@ async function generateAIResponse(
       .eq("instance_id", instanceId)
       .maybeSingle();
 
+    // Get last inbound message content directly from function call (or db fallback if needed)
+    const { data: lastMsg } = await supabaseAdmin
+      .from("messages")
+      .select("content")
+      .eq("conversation_id", conversationId)
+      .eq("direction", "inbound")
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .single();
+    
+    const lastContent = (lastMsg?.content || "").toLowerCase().trim();
+    let shouldTransferToHuman = false;
+
+    if (aiSettings?.human_trigger_words) {
+      const humanWords = aiSettings.human_trigger_words.split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+      if (humanWords.some((w: string) => lastContent.includes(w))) {
+        shouldTransferToHuman = true;
+      }
+    }
+
     // --- Pause control (Status-based) ---
     if (instSettings) {
       const pauseWords = (instSettings.pause_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
       const resumeWords = (instSettings.resume_words || "").split(",").map((w: string) => w.trim().toLowerCase()).filter(Boolean);
-
-      // Get last inbound message content directly from function call (or db fallback if needed)
-      const { data: lastMsg } = await supabaseAdmin
-        .from("messages")
-        .select("content")
-        .eq("conversation_id", conversationId)
-        .eq("direction", "inbound")
-        .order("sent_at", { ascending: false })
-        .limit(1)
-        .single();
-      
-      const lastContent = (lastMsg?.content || "").toLowerCase().trim();
 
       if (pauseWords.includes(lastContent)) {
         console.log(`Bot PAUSE command detected. Setting conversation ${conversationId} to pending.`);
@@ -678,11 +686,18 @@ async function generateAIResponse(
       });
     }
 
-    // Update conversation timestamp
-    await supabaseAdmin.from("conversations").update({
+    // Update conversation timestamp and status if transferring
+    const updateData: any = {
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", conversationId);
+    };
+    
+    if (shouldTransferToHuman) {
+      console.log(`Human trigger word detected in conversation ${conversationId}. Setting status to pending.`);
+      updateData.status = "pending";
+    }
+
+    await supabaseAdmin.from("conversations").update(updateData).eq("id", conversationId);
 
     // --- Contabilização de tokens consumidos (inclui cache) ---
     if (lastUsage) {
