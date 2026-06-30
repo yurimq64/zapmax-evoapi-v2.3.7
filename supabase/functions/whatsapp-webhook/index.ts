@@ -28,11 +28,25 @@ async function generateAIResponse(
       return;
     }
 
-    const openaiApiKey = aiSettings.openai_api_key;
-    const openaiModel = aiSettings.openai_model || "gpt-4o-mini";
+    // Chave global da Anthropic (variável de ambiente do servidor)
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!anthropicApiKey) {
+      console.error("ANTHROPIC_API_KEY não configurada no servidor. Abortando.");
+      return;
+    }
 
-    if (!openaiApiKey) {
-      console.error("OpenAI API Key not configured for tenant", tenantId, "skipping auto-response");
+    // --- Validação de limite de tokens por plano ---
+    const { data: subscription } = await supabaseAdmin
+      .from("subscriptions")
+      .select("used_ai_tokens, plans(max_ai_tokens)")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    const usedTokens = subscription?.used_ai_tokens ?? 0;
+    const maxTokens = (subscription?.plans as any)?.max_ai_tokens ?? 0;
+
+    if (maxTokens > 0 && usedTokens >= maxTokens) {
+      console.log(`Limite de tokens atingido para tenant ${tenantId}: ${usedTokens}/${maxTokens}. Abortando.`);
       return;
     }
 
@@ -379,55 +393,81 @@ async function generateAIResponse(
       .maybeSingle();
     const currentContactId = contactRecord?.id || null;
 
-    // Call AI with function calling
+    // Call AI with tool use (Anthropic Claude)
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    
-    const aiMessages = [
-      { role: "system", content: systemPrompt },
-      ...chatMessages,
-    ];
 
-    let aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Claude recebe o system prompt separado do array messages
+    const aiMessages: any[] = [...chatMessages];
+
+    // Converter tools para o formato da Anthropic
+    const claudeTools = tools.map((t: any) => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters,
+    }));
+
+    let aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        "Content-Type": "application/json",
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: openaiModel,
+        model: "claude-haiku-4-5",
+        max_tokens: 1024,
+        cache_control: { type: "ephemeral" }, // caching automático do histórico de mensagens
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral" }, // cache explícito do system prompt estático
+          },
+        ],
         messages: aiMessages,
-        tools,
-        tool_choice: "auto",
-        stream: false,
+        tools: claudeTools,
       }),
     });
 
-    // Handle tool calls loop (max 3 iterations)
+    // Handle tool use loop (max 3 iterations) — formato Anthropic
     let iterations = 0;
+    let lastUsage: {
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    } | null = null;
+
     while (aiResponse.ok && iterations < 3) {
       const aiData = await aiResponse.json();
-      const choice = aiData.choices?.[0];
-      
-      if (!choice?.message?.tool_calls || choice.message.tool_calls.length === 0) {
-        // No tool calls, we have the final response
-        const finalContent = choice?.message?.content;
-        if (finalContent) {
-          // Jump to sending the response (set aiContent and break)
-          aiResponse = { _finalContent: finalContent } as any;
+
+      // Captura uso de tokens de cada iteração
+      if (aiData.usage) lastUsage = aiData.usage;
+
+      // Claude encerra com stop_reason: 'end_turn' (sem tools) ou 'tool_use'
+      const stopReason = aiData.stop_reason;
+      const contentBlocks: any[] = aiData.content || [];
+
+      const toolUseBlocks = contentBlocks.filter((b: any) => b.type === "tool_use");
+
+      if (stopReason !== "tool_use" || toolUseBlocks.length === 0) {
+        // Nenhuma tool call — resposta final
+        const textBlock = contentBlocks.find((b: any) => b.type === "text");
+        if (textBlock?.text) {
+          aiResponse = { _finalContent: textBlock.text, _usage: aiData.usage } as any;
         }
         break;
       }
 
-      // Process tool calls
-      aiMessages.push(choice.message);
+      // Adiciona a resposta do assistente (com tool_use) ao histórico
+      aiMessages.push({ role: "assistant", content: contentBlocks });
 
-      for (const toolCall of choice.message.tool_calls) {
-        const fnName = toolCall.function.name;
-        let fnArgs: any = {};
-        try {
-          fnArgs = JSON.parse(toolCall.function.arguments || "{}");
-        } catch { /* empty */ }
+      // Processa cada tool call e coleta os resultados
+      const toolResults: any[] = [];
 
+      for (const toolBlock of toolUseBlocks) {
+        const fnName = toolBlock.name;
+        const fnArgs = toolBlock.input || {};
         let toolResult: any = { success: false, error: "Unknown tool" };
 
         if (fnName === "check_availability") {
@@ -527,39 +567,54 @@ async function generateAIResponse(
           }
         }
 
-        aiMessages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
+        // Formato Anthropic: tool_result vai dentro de role:'user'
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolBlock.id,
           content: JSON.stringify(toolResult),
         });
       }
 
-      // Call AI again with tool results
-      aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      // Adiciona os resultados das tools como mensagem do usuário
+      aiMessages.push({ role: "user", content: toolResults });
+
+      // Chama o Claude novamente com os resultados das tools
+      aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${openaiApiKey}`,
-          "Content-Type": "application/json",
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: openaiModel,
+          model: "claude-haiku-4-5",
+          max_tokens: 1024,
+          cache_control: { type: "ephemeral" },
+          system: [
+            {
+              type: "text",
+              text: systemPrompt,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
           messages: aiMessages,
-          tools,
-          tool_choice: "auto",
-          stream: false,
+          tools: claudeTools,
         }),
       });
 
       iterations++;
     }
 
-    // Extract final content
+    // Extrai o conteúdo final
     let aiContent: string | null = null;
     if ((aiResponse as any)._finalContent) {
       aiContent = (aiResponse as any)._finalContent;
+      if ((aiResponse as any)._usage) lastUsage = (aiResponse as any)._usage;
     } else if (aiResponse.ok) {
       const finalData = await aiResponse.json();
-      aiContent = finalData.choices?.[0]?.message?.content;
+      const textBlock = finalData.content?.find((b: any) => b.type === "text");
+      aiContent = textBlock?.text || null;
+      if (finalData.usage) lastUsage = finalData.usage;
     }
 
     if (!aiContent) {
@@ -595,13 +650,20 @@ async function generateAIResponse(
     for (const msg of messagesToSend) {
       if (evolutionUrl && evolutionKey && instanceEvolutionId) {
         try {
-          await fetch(`${evolutionUrl}/message/sendText/${instanceEvolutionId}`, {
+          console.log(`[sendText] Enviando para ${contactPhone} via instância ${instanceEvolutionId}`);
+          const sendRes = await fetch(`${evolutionUrl}/message/sendText/${instanceEvolutionId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: evolutionKey },
             body: JSON.stringify({ number: contactPhone, text: msg }),
           });
+          const sendResText = await sendRes.text();
+          if (!sendRes.ok) {
+            console.error(`[sendText] FALHOU — status: ${sendRes.status} | body: ${sendResText}`);
+          } else {
+            console.log(`[sendText] OK — status: ${sendRes.status} | body: ${sendResText.substring(0, 200)}`);
+          }
         } catch (e) {
-          console.error("Evolution send error:", e);
+          console.error("[sendText] Exceção de rede:", e);
         }
       }
 
@@ -621,6 +683,33 @@ async function generateAIResponse(
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", conversationId);
+
+    // --- Contabilização de tokens consumidos (inclui cache) ---
+    if (lastUsage) {
+      const cacheWrite = lastUsage.cache_creation_input_tokens || 0;
+      const cacheRead  = lastUsage.cache_read_input_tokens || 0;
+      const regularIn  = lastUsage.input_tokens || 0;
+      const outputTok  = lastUsage.output_tokens || 0;
+      const totalConsumido = regularIn + cacheWrite + cacheRead + outputTok;
+
+      console.log(
+        `[AI] Tokens: input=${regularIn} cache_write=${cacheWrite} cache_read=${cacheRead} output=${outputTok} total=${totalConsumido}` +
+        (cacheRead > 0 ? ` (⚡ cache hit: ${Math.round(cacheRead / (regularIn + cacheWrite + cacheRead) * 100)}% lido do cache)` : "")
+      );
+
+      await supabaseAdmin.rpc("increment_ai_tokens", {
+        p_tenant_id: tenantId,
+        p_tokens: totalConsumido,
+      }).then(({ error }) => {
+        if (error) {
+          console.warn("[AI] RPC increment_ai_tokens falhou, tentando update direto:", error.message);
+          return supabaseAdmin
+            .from("subscriptions")
+            .update({ used_ai_tokens: (usedTokens) + totalConsumido })
+            .eq("tenant_id", tenantId);
+        }
+      });
+    }
 
     console.log("AI auto-response sent for conversation", conversationId, `(${messagesToSend.length} parts)`);
   } catch (e) {

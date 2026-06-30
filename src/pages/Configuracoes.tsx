@@ -4,7 +4,7 @@ import {
   Bot, Building2, Shield, Bell, CreditCard, SlidersHorizontal,
   AlertTriangle, BookOpen, Calendar, FileText, Plus, CheckCircle2,
   Camera, Eye, EyeOff, User, Crown, MessageCircle, Users, Upload, X, Trash2,
-  Loader2, Key,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -180,68 +180,6 @@ export default function Configuracoes() {
                 </CardContent>
               </Card>
 
-              {/* OpenAI Configuration */}
-              <Card>
-                <CardHeader className="p-3 sm:p-6">
-                  <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                    <Key className="h-4 w-4 sm:h-5 sm:w-5" /> Configuração OpenAI
-                  </CardTitle>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    Configure sua chave da API e modelo da OpenAI para o assistente de IA.
-                  </p>
-                </CardHeader>
-                <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0 space-y-3 sm:space-y-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs sm:text-sm">Chave da API OpenAI</Label>
-                    <div className="relative">
-                      <Input
-                        type="password"
-                        value={ai.openai_api_key}
-                        onChange={(e) => updateAI({ openai_api_key: e.target.value })}
-                        placeholder="sk-..."
-                        className="text-sm pr-10 font-mono"
-                      />
-                      <Key className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      Obtenha em{" "}
-                      <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                        platform.openai.com/api-keys
-                      </a>
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs sm:text-sm">Modelo</Label>
-                    <Select value={ai.openai_model} onValueChange={(v) => updateAI({ openai_model: v })}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="gpt-4o-mini">GPT-4o Mini (Rápido e econômico)</SelectItem>
-                        <SelectItem value="gpt-5">GPT-5 (Mais poderoso)</SelectItem>
-                        <SelectItem value="gpt-5-mini">GPT-5 Mini (Equilíbrio custo/qualidade)</SelectItem>
-                        <SelectItem value="gpt-5-nano">GPT-5 Nano (Ultra rápido e barato)</SelectItem>
-                        <SelectItem value="gpt-5.2">GPT-5.2 (Último lançamento)</SelectItem>
-                        <SelectItem value="o3">O3 (Raciocínio avançado)</SelectItem>
-                        <SelectItem value="o3-mini">O3 Mini (Raciocínio rápido)</SelectItem>
-                        <SelectItem value="o4-mini">O4 Mini (Raciocínio eficiente)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {!ai.openai_api_key && (
-                    <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 sm:p-3 text-xs sm:text-sm flex gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                      <p>A IA não funcionará sem uma chave da API OpenAI válida.</p>
-                    </div>
-                  )}
-                  {ai.openai_api_key && (
-                    <div className="rounded-lg bg-primary/10 border border-primary/30 p-2 sm:p-3 text-xs sm:text-sm flex gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                      <p>Chave configurada · Modelo: <span className="font-semibold text-primary">{ai.openai_model}</span></p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
 
               <Card>
                 <CardHeader className="p-3 sm:p-6">

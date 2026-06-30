@@ -192,8 +192,13 @@ Deno.serve(async (req) => {
         const evolutionKey = Deno.env.get("EVOLUTION_API_KEY");
         const supabaseUrl = Deno.env.get("SUPABASE_URL");
 
+        console.log("[create] EVOLUTION_API_URL set:", !!evolutionUrl, "| URL prefix:", evolutionUrl?.substring(0, 30));
+        console.log("[create] EVOLUTION_API_KEY set:", !!evolutionKey);
+
         if (evolutionUrl && evolutionKey) {
           const evoInstanceName = `${tenantId}_${instance.id}`;
+          console.log("[create] Calling Evolution API POST /instance/create for:", evoInstanceName);
+
           const evoRes = await fetch(`${evolutionUrl}/instance/create`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "apikey": evolutionKey },
@@ -204,20 +209,31 @@ Deno.serve(async (req) => {
             }),
           });
 
+          const evoText = await evoRes.text();
+          console.log("[create] Evolution API response status:", evoRes.status, "| body:", evoText.substring(0, 500));
+
           if (evoRes.ok) {
-            const evoData = await evoRes.json();
+            const evoData = JSON.parse(evoText);
             const finalInstanceName = evoData.instance?.instanceName || evoInstanceName;
+
+            // Adaptador para a v2.3.7: Extrai a string base64 do objeto qrcode para o padrão que o frontend espera
+            const qrBase64 = typeof evoData.qrcode === "object"
+              ? (evoData.qrcode?.base64 || "")
+              : (evoData.qrcode || "");
+
+            console.log("[create] Instance created. finalInstanceName:", finalInstanceName, "| qrBase64 length:", qrBase64?.length);
 
             await adminClient.from("whatsapp_instances").update({
               evolution_instance_id: finalInstanceName,
-              qr_code: evoData.qrcode?.base64 || null,
+              qr_code: qrBase64 || null,
               status: "connecting",
             }).eq("id", instance.id);
 
             instance.status = "connecting";
-            instance.qr_code = evoData.qrcode?.base64 || null;
+            instance.qr_code = qrBase64 || null;
+            (instance as any).qrcode = qrBase64 || null; // Injeção de compatibilidade v1
 
-            // Register webhook for this instance
+            // Registra webhook para esta instância
             const webhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
             const webhookEvents = [
               "MESSAGES_UPSERT",
@@ -232,11 +248,8 @@ Deno.serve(async (req) => {
                   enabled: true,
                   url: webhookUrl,
                   events: webhookEvents,
-                  byEvents: false,
-                  base64: false,
-                  webhook_by_events: false,
-                  webhook_base64: false,
                   headers: {},
+                  base64: false,
                 },
               };
 
@@ -248,17 +261,23 @@ Deno.serve(async (req) => {
               const webhookText = await webhookRes.text();
 
               if (!webhookRes.ok) {
-                console.error("Failed to register webhook:", webhookRes.status, webhookText);
+                console.error("[create] Failed to register webhook:", webhookRes.status, webhookText);
               } else {
-                console.log("Webhook registered for instance:", finalInstanceName, "->", webhookUrl, webhookText);
+                console.log("[create] Webhook registered:", finalInstanceName, "->", webhookUrl);
               }
             } catch (whErr) {
-              console.error("Failed to register webhook:", whErr);
+              console.error("[create] Webhook registration exception:", whErr);
             }
+
+          } else {
+            // Erro da Evolution API — loga o motivo real da falha
+            console.error("[create] Evolution API FAILED. Status:", evoRes.status, "| Body:", evoText);
           }
+        } else {
+          console.error("[create] Evolution API not called: EVOLUTION_API_URL or EVOLUTION_API_KEY is missing from env vars.");
         }
-      } catch {
-        // Evolution API not available
+      } catch (createErr) {
+        console.error("[create] Exception during Evolution API call:", createErr);
       }
 
       return jsonResponse({ success: true, data: instance });
@@ -288,12 +307,25 @@ Deno.serve(async (req) => {
         );
         if (evoRes.ok) {
           const evoData = await evoRes.json();
+
+          // Adaptador para a v2.3.7: Mapeia a propriedade 'base64' da raiz para a chave 'qrcode' exigida pelo frontend
+          const adaptedData = {
+            ...evoData,
+            qrcode: evoData?.base64 || "",
+          };
+
           await adminClient.from("whatsapp_instances").update({
-            qr_code: evoData.base64 || null,
+            qr_code: adaptedData.qrcode || null,
             status: "connecting",
           }).eq("id", instance_id);
 
-          return jsonResponse({ success: true, data: { qr_code: evoData.base64 } });
+          return jsonResponse({
+            success: true,
+            data: {
+              qr_code: adaptedData.qrcode,
+              qrcode: adaptedData.qrcode, // Campo espelhado para compatibilidade v1
+            },
+          });
         }
       }
 
@@ -359,7 +391,11 @@ Deno.serve(async (req) => {
                 console.error("fetchInstances error:", e);
               }
             } else if (state === "close" || state === "disconnected") {
-              newStatus = "disconnected";
+              // Se a instância estiver gerando QR Code (connecting), preserva o estado atual
+              // A Evolution API v2 retorna "close" enquanto aguarda o escaneamento do QR Code
+              if (inst.status !== "connecting") {
+                newStatus = "disconnected";
+              }
             }
 
             console.log("newStatus:", newStatus, "phone:", phone, "prevStatus:", inst.status, "prevPhone:", inst.phone);
@@ -548,11 +584,8 @@ Deno.serve(async (req) => {
             enabled: true,
             url: webhookUrl,
             events: webhookEvents,
-            byEvents: false,
-            base64: false,
-            webhook_by_events: false,
-            webhook_base64: false,
             headers: {},
+            base64: false,
           },
         };
 
